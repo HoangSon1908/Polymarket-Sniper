@@ -86,8 +86,10 @@ def load_config():
         except:
             pass
     return {
-        "min_p": 97.0,
-        "max_p": 99.5,
+        "min_p_yes": 80.0,
+        "max_p_yes": 99.5,
+        "min_p_no": 98.0,
+        "max_p_no": 99.5,
         "max_spread": 100.0,
         "market_type": "All Types",
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
@@ -115,7 +117,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_price, max_price, max_spread, matches_list):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -167,10 +169,10 @@ async def check_event(session, semaphore, city, date_info, m_type, min_price, ma
                 is_match = False
                 matched_price = 100.0
                 
-                if (min_price/100) <= yes_price <= (max_price/100):
+                if (min_p_yes/100) <= yes_price <= (max_p_yes/100):
                     is_match = True
                     matched_price = min(matched_price, yes_price * 100)
-                if (min_price/100) <= no_price <= (max_price/100):
+                if (min_p_no/100) <= no_price <= (max_p_no/100):
                     is_match = True
                     matched_price = min(matched_price, no_price * 100)
 
@@ -192,7 +194,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_price, ma
         except Exception:
             pass
 
-async def run_scan(min_price, max_price, max_spread, selected_cities, selected_dates, selected_type):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, selected_dates, selected_type):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
@@ -208,7 +210,7 @@ async def run_scan(min_price, max_price, max_spread, selected_cities, selected_d
             elif selected_type == "Lowest": m_types = [t for t in m_types if t == "lowest"]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_price, max_price, max_spread, matches_list))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -253,16 +255,24 @@ with st.container():
     if "selected_cities" not in st.session_state: st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     selected_cities = st.multiselect("SELECT CITIES", city_names, default=st.session_state.selected_cities)
     
-    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1, 1, 1])
+    c1, c2, c3 = st.columns([1, 1.5, 1])
     type_idx = ["All Types", "Highest", "Lowest"].index(config.get("market_type", "All Types"))
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
     if isinstance(saved_dates, str): saved_dates = ["Today", "Tomorrow", "Day After Tomorrow"]
     
     with c1: selected_type = st.selectbox("MARKET TYPE", ["All Types", "Highest", "Lowest"], index=type_idx)
     with c2: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
-    with c3: min_p = st.number_input("MIN PRICE (¢)", min_value=0.0, max_value=100.0, value=config.get("min_p", 97.0), step=0.1, format="%.1f")
-    with c4: max_p = st.number_input("MAX PRICE (¢)", min_value=0.0, max_value=100.0, value=config.get("max_p", 99.5), step=0.1, format="%.1f")
-    with c5: max_spread = st.number_input("MAX SPREAD (¢)", min_value=0.0, max_value=100.0, value=config.get("max_spread", 100.0), step=0.1, format="%.1f")
+    with c3: max_spread = st.number_input("MAX SPREAD (¢)", min_value=0.0, max_value=100.0, value=config.get("max_spread", 100.0), step=0.1, format="%.1f")
+
+    st.markdown("<p style='font-weight: 600; margin-bottom: -10px; color: #3fb950;'>YES PRICE RANGE (¢)</p>", unsafe_allow_html=True)
+    y_col1, y_col2 = st.columns(2)
+    with y_col1: min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
+    with y_col2: max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.5), step=0.1, format="%.1f", label_visibility="collapsed")
+
+    st.markdown("<p style='font-weight: 600; margin-bottom: -10px; color: #f85149;'>NO PRICE RANGE (¢)</p>", unsafe_allow_html=True)
+    n_col1, n_col2 = st.columns(2)
+    with n_col1: min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
+    with n_col2: max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.5), step=0.1, format="%.1f", label_visibility="collapsed")
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -271,11 +281,20 @@ with st.container():
     st.markdown('</div>', unsafe_allow_html=True)
 
 if search_clicked:
-    current_config = {"min_p": min_p, "max_p": max_p, "max_spread": max_spread, "market_type": selected_type, "selected_dates": selected_dates, "selected_cities": selected_cities}
+    current_config = {
+        "min_p_yes": min_p_yes, 
+        "max_p_yes": max_p_yes, 
+        "min_p_no": min_p_no, 
+        "max_p_no": max_p_no, 
+        "max_spread": max_spread, 
+        "market_type": selected_type, 
+        "selected_dates": selected_dates, 
+        "selected_cities": selected_cities
+    }
     save_config(current_config)
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p, max_p, max_spread, selected_cities, selected_dates, selected_type))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, selected_dates, selected_type))
     
     st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
     if results:
