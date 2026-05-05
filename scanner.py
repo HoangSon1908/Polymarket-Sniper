@@ -93,7 +93,8 @@ def load_config():
         "max_spread": 100.0,
         "market_type": "All Types",
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
-        "selected_cities": DEFAULT_FAVORITE_CITIES
+        "selected_cities": DEFAULT_FAVORITE_CITIES,
+        "excluded_cities": []
     }
 
 def save_config(config_data):
@@ -247,13 +248,23 @@ st.markdown("""
 
 with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
-    city_names = sorted([c["name"] for c in CITIES_DATA])
+    all_city_names = sorted([c["name"] for c in CITIES_DATA])
+    excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", all_city_names, default=config.get("excluded_cities", []))
+    
+    city_names = [c for c in all_city_names if c not in excluded_cities]
+    
     preset_col1, preset_col2 = st.columns([1, 5])
     with preset_col1:
-        if st.button("Default Favorites"): st.session_state.selected_cities = DEFAULT_FAVORITE_CITIES
+        if st.button("Default Favorites"): 
+            st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in excluded_cities]
         if st.button("Clear All"): st.session_state.selected_cities = []
-    if "selected_cities" not in st.session_state: st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
-    selected_cities = st.multiselect("SELECT CITIES", city_names, default=st.session_state.selected_cities)
+    
+    if "selected_cities" not in st.session_state: 
+        st.session_state.selected_cities = [c for c in config.get("selected_cities", DEFAULT_FAVORITE_CITIES) if c not in excluded_cities]
+    
+    # Filter out excluded cities from current selection
+    current_selected = [c for c in st.session_state.selected_cities if c not in excluded_cities]
+    selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=current_selected)
     
     c1, c2, c3 = st.columns([1, 1.5, 1])
     type_idx = ["All Types", "Highest", "Lowest"].index(config.get("market_type", "All Types"))
@@ -289,7 +300,8 @@ if search_clicked:
         "max_spread": max_spread, 
         "market_type": selected_type, 
         "selected_dates": selected_dates, 
-        "selected_cities": selected_cities
+        "selected_cities": selected_cities,
+        "excluded_cities": excluded_cities
     }
     save_config(current_config)
 
