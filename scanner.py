@@ -71,7 +71,8 @@ DEFAULT_FAVORITE_CITIES = [
     "Tokyo", "Seoul", "Busan", "Singapore", "Shanghai", "Wuhan", "Chengdu", 
     "Chongqing", "Beijing", "Kuala Lumpur", "Taipei", "Qingdao", "Manila", 
     "Guangzhou", "Jakarta", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
-    "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", "London"
+    "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -87,14 +88,14 @@ def load_config():
             pass
     return {
         "min_p_yes": 80.0,
-        "max_p_yes": 99.5,
+        "max_p_yes": 99.9,
         "min_p_no": 98.0,
-        "max_p_no": 99.5,
+        "max_p_no": 99.9,
         "max_spread": 100.0,
         "market_type": "All Types",
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
-        "excluded_cities": []
+        "excluded_cities": ["Lagos", "Shenzhen", "Denver", "Hong Kong"]
     }
 
 def save_config(config_data):
