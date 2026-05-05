@@ -196,8 +196,14 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             pass
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, selected_dates, selected_type):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
+    
+    # 1. Always exclude blacklisted cities
+    if excluded_cities:
+        cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
+        
+    # 2. If specific cities are selected, use only those (they should already be non-blacklisted due to UI logic)
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
     dates = get_target_dates(selected_dates)
@@ -320,7 +326,7 @@ if search_clicked:
     save_config(current_config)
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, selected_dates, selected_type))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type))
     
     st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
     if results:
