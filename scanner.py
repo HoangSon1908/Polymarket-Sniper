@@ -292,12 +292,12 @@ with st.container():
     st.markdown("<p style='font-weight: 600; margin-bottom: -10px; color: #3fb950;'>YES PRICE RANGE (¢)</p>", unsafe_allow_html=True)
     y_col1, y_col2 = st.columns(2)
     with y_col1: min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with y_col2: max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.5), step=0.1, format="%.1f", label_visibility="collapsed")
+    with y_col2: max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
     st.markdown("<p style='font-weight: 600; margin-bottom: -10px; color: #f85149;'>NO PRICE RANGE (¢)</p>", unsafe_allow_html=True)
     n_col1, n_col2 = st.columns(2)
     with n_col1: min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with n_col2: max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.5), step=0.1, format="%.1f", label_visibility="collapsed")
+    with n_col2: max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
