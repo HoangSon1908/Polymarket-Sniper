@@ -249,22 +249,35 @@ st.markdown("""
 with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
     all_city_names = sorted([c["name"] for c in CITIES_DATA])
-    excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", all_city_names, default=config.get("excluded_cities", []))
     
-    city_names = [c for c in all_city_names if c not in excluded_cities]
+    # Initialize session states
+    if "selected_cities" not in st.session_state:
+        st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
+    if "excluded_cities" not in st.session_state:
+        st.session_state.excluded_cities = config.get("excluded_cities", [])
+
+    # Filter out any overlaps that might exist from config load
+    st.session_state.selected_cities = [c for c in st.session_state.selected_cities if c not in st.session_state.excluded_cities]
+
+    # --- Blacklist Multiselect (Options depend on selected_cities) ---
+    exclude_options = [c for c in all_city_names if c not in st.session_state.selected_cities]
+    excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
+    st.session_state.excluded_cities = excluded_cities
     
+    # --- Preset Buttons ---
     preset_col1, preset_col2 = st.columns([1, 5])
     with preset_col1:
         if st.button("Default Favorites"): 
-            st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in excluded_cities]
-        if st.button("Clear All"): st.session_state.selected_cities = []
+            st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
+            st.rerun()
+        if st.button("Clear All"): 
+            st.session_state.selected_cities = []
+            st.rerun()
     
-    if "selected_cities" not in st.session_state: 
-        st.session_state.selected_cities = [c for c in config.get("selected_cities", DEFAULT_FAVORITE_CITIES) if c not in excluded_cities]
-    
-    # Filter out excluded cities from current selection
-    current_selected = [c for c in st.session_state.selected_cities if c not in excluded_cities]
-    selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=current_selected)
+    # --- Selection Multiselect (Options depend on excluded_cities) ---
+    city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
+    selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
+    st.session_state.selected_cities = selected_cities
     
     c1, c2, c3 = st.columns([1, 1.5, 1])
     type_idx = ["All Types", "Highest", "Lowest"].index(config.get("market_type", "All Types"))
