@@ -340,26 +340,27 @@ if search_clicked:
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
-                    for _, row in event_markets.iterrows():
-                        st.markdown(f"""
-                        <div class="market-row">
-                            <div style="flex:2; color:#e6edf3">{row['Market']}</div>
-                            <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
-                                <div style="text-align:center">
-                                    <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
-                                    <div class="depth-text">${row['YES_Depth']:,.0f}</div>
-                                </div>
-                                <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
-                                <div style="text-align:center">
-                                    <div class="price-btn-no">No {row['NO']:.1f}¢</div>
-                                    <div class="depth-text">${row['NO_Depth']:,.0f}</div>
-                                </div>
+                    # Chỉ lấy market có giá rẻ nhất (MatchedPrice thấp nhất) cho mỗi sự kiện
+                    row = event_markets.iloc[0]
+                    st.markdown(f"""
+                    <div class="market-row">
+                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                            <div style="text-align:center">
+                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
                             </div>
-                            <div style="flex:1; text-align:right">
-                                <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                            <div style="text-align:center">
+                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
+                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
                             </div>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <div style="flex:1; text-align:right">
+                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
