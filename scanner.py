@@ -272,12 +272,18 @@ with st.container():
     st.session_state.excluded_cities = excluded_cities
     
     # --- Preset Buttons ---
-    preset_col1, preset_col2 = st.columns([1, 5])
+    preset_col1, preset_col2, preset_col3 = st.columns([1.5, 1.5, 1])
     with preset_col1:
-        if st.button("Default Favorites"): 
+        if st.button("Thành phố buổi sáng", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.rerun()
-        if st.button("Clear All"): 
+    with preset_col2:
+        if st.button("Thành phố buổi tối", use_container_width=True):
+            morning_set = set(DEFAULT_FAVORITE_CITIES)
+            st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
+            st.rerun()
+    with preset_col3:
+        if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.rerun()
     
