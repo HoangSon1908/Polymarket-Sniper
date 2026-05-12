@@ -95,7 +95,7 @@ def load_config():
         "filter_no": True,
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
-        "excluded_cities": ["Lagos", "Shenzhen", "Denver", "Hong Kong"]
+        "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong"]
     }
 
 def save_config(config_data):
