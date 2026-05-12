@@ -93,8 +93,6 @@ def load_config():
         "max_p_no": 99.9,
         "filter_yes": True,
         "filter_no": True,
-        "max_spread": 100.0,
-        "market_type": "All Types",
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
         "excluded_cities": ["Lagos", "Shenzhen", "Denver", "Hong Kong"]
@@ -121,7 +119,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, matches_list):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -180,7 +178,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                     is_match = True
                     matched_price = min(matched_price, no_price * 100)
 
-                if is_match and spread <= max_spread:
+                if is_match:
                     matches_list.append({
                         "City": city["name"],
                         "Date": date_info["display"],
@@ -198,7 +196,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             pass
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     
     # 1. Always exclude blacklisted cities
@@ -214,13 +212,12 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
     async with aiohttp.ClientSession() as session:
         tasks = []
         for city in cities_to_scan:
+            # Always scan all available market types (Highest/Lowest)
             m_types = city.get("marketType")
             if not isinstance(m_types, list): m_types = [m_types]
-            if selected_type == "Highest": m_types = [t for t in m_types if t == "highest"]
-            elif selected_type == "Lowest": m_types = [t for t in m_types if t == "lowest"]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, matches_list))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -294,14 +291,12 @@ with st.container():
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
     
-    c1, c2, c3 = st.columns([1, 1.5, 1])
-    type_idx = ["All Types", "Highest", "Lowest"].index(config.get("market_type", "All Types"))
+    c1, c2 = st.columns([1, 1])
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
     if isinstance(saved_dates, str): saved_dates = ["Today", "Tomorrow", "Day After Tomorrow"]
     
-    with c1: selected_type = st.selectbox("MARKET TYPE", ["All Types", "Highest", "Lowest"], index=type_idx)
-    with c2: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
-    with c3: max_spread = st.number_input("MAX SPREAD (¢)", min_value=0.0, max_value=100.0, value=config.get("max_spread", 100.0), step=0.1, format="%.1f")
+    with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
+    with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
     # YES Filter
     y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
@@ -341,8 +336,6 @@ if search_clicked:
         "max_p_no": max_p_no, 
         "filter_yes": filter_yes,
         "filter_no": filter_no,
-        "max_spread": max_spread, 
-        "market_type": selected_type, 
         "selected_dates": selected_dates, 
         "selected_cities": selected_cities,
         "excluded_cities": excluded_cities
@@ -350,7 +343,7 @@ if search_clicked:
     save_config(current_config)
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, selected_cities, excluded_cities, selected_dates))
     
     st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
     if results:
