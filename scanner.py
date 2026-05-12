@@ -91,6 +91,8 @@ def load_config():
         "max_p_yes": 99.9,
         "min_p_no": 98.0,
         "max_p_no": 99.9,
+        "filter_yes": True,
+        "filter_no": True,
         "max_spread": 100.0,
         "market_type": "All Types",
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
@@ -119,7 +121,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, matches_list):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -171,10 +173,10 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 is_match = False
                 matched_price = 100.0
                 
-                if (min_p_yes/100) <= yes_price <= (max_p_yes/100):
+                if filter_yes and (min_p_yes/100) <= yes_price <= (max_p_yes/100):
                     is_match = True
                     matched_price = min(matched_price, yes_price * 100)
-                if (min_p_no/100) <= no_price <= (max_p_no/100):
+                if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
                     is_match = True
                     matched_price = min(matched_price, no_price * 100)
 
@@ -196,7 +198,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             pass
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     
     # 1. Always exclude blacklisted cities
@@ -218,7 +220,7 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selecte
             elif selected_type == "Lowest": m_types = [t for t in m_types if t == "lowest"]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, matches_list))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -301,15 +303,29 @@ with st.container():
     with c2: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
     with c3: max_spread = st.number_input("MAX SPREAD (¢)", min_value=0.0, max_value=100.0, value=config.get("max_spread", 100.0), step=0.1, format="%.1f")
 
-    st.markdown("<p style='font-weight: 600; margin-bottom: -10px; color: #3fb950;'>YES PRICE RANGE (¢)</p>", unsafe_allow_html=True)
-    y_col1, y_col2 = st.columns(2)
-    with y_col1: min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with y_col2: max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
+    # YES Filter
+    y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
+    with y_head_col:
+        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
+        filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes")
+    with y_in_col1:
+        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: -10px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
+        min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
+    with y_in_col2:
+        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: -10px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
+        max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
-    st.markdown("<p style='font-weight: 600; margin-bottom: -10px; color: #f85149;'>NO PRICE RANGE (¢)</p>", unsafe_allow_html=True)
-    n_col1, n_col2 = st.columns(2)
-    with n_col1: min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with n_col2: max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
+    # NO Filter
+    n_head_col, n_in_col1, n_in_col2 = st.columns([1, 2, 2])
+    with n_head_col:
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
+        filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
+    with n_in_col1:
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: -10px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
+        min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
+    with n_in_col2:
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: -10px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
+        max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -323,6 +339,8 @@ if search_clicked:
         "max_p_yes": max_p_yes, 
         "min_p_no": min_p_no, 
         "max_p_no": max_p_no, 
+        "filter_yes": filter_yes,
+        "filter_no": filter_no,
         "max_spread": max_spread, 
         "market_type": selected_type, 
         "selected_dates": selected_dates, 
@@ -332,7 +350,7 @@ if search_clicked:
     save_config(current_config)
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, max_spread, selected_cities, excluded_cities, selected_dates, selected_type))
     
     st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
     if results:
