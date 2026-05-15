@@ -279,8 +279,6 @@ st.markdown("""
     .main { background-color: #0e1117; }
     .stApp { background-color: #0e1117; }
     header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
-    .top-bar { background-color: #161b22; padding: 10px 20px; margin: -6rem -5rem 2rem -5rem; border-bottom: 1px solid #30363d; }
-    .top-bar h2 { color: white; margin: 0; font-size: 1.2rem; font-weight: 600; }
     .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
@@ -293,11 +291,8 @@ st.markdown("""
     .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
     .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
     .open-link:hover { background-color: #2ea043; }
-    .back-to-top { position: fixed; bottom: 20px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>
-<div class="top-bar">
-    <h2>PolyWeather Market Finder</h2>
-</div>
 """, unsafe_allow_html=True)
 
 with st.container():
@@ -321,11 +316,11 @@ with st.container():
     # --- Preset Buttons ---
     preset_col1, preset_col2, preset_col3 = st.columns([1.5, 1.5, 1])
     with preset_col1:
-        if st.button("Thành phố buổi sáng", use_container_width=True): 
+        if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.rerun()
     with preset_col2:
-        if st.button("Thành phố buổi tối", use_container_width=True):
+        if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.rerun()
@@ -352,10 +347,10 @@ with st.container():
         st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
         filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes")
     with y_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: -10px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
         min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
     with y_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: -10px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
         max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
     # NO Filter
@@ -364,15 +359,15 @@ with st.container():
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
         filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
     with n_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: -10px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
         min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: -10px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
         max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_gap_col:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP</p>", unsafe_allow_html=True)
-        gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap", help="Lọc Gap: Chỉ giữ lại các kèo No cách ô có giá cao nhất ít nhất 4 vị trí (bỏ qua 3 ô gần nhất ở mỗi phía).")
-        st.markdown("<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Bỏ qua 3 ô)</p>", unsafe_allow_html=True)
+        gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap", help="Gap Filter: Only keep No bets at least 4 positions away from the highest price cell (skip 3 closest).")
+        st.markdown("<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip 3 closest)</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
