@@ -4,6 +4,7 @@ import asyncio
 import aiohttp
 import streamlit as st
 import pandas as pd
+import re
 from datetime import datetime, timedelta
 
 # --- CONSTANTS ---
@@ -93,6 +94,7 @@ def load_config():
         "max_p_no": 99.9,
         "filter_yes": True,
         "filter_no": True,
+        "gap_filter_enabled": False,
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
         "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong"]
@@ -103,6 +105,15 @@ def save_config(config_data):
         json.dump(config_data, f)
 
 # --- HELPER FUNCTIONS ---
+
+def parse_val(title):
+    if not title: return None
+    nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
+    if not nums: return None
+    if len(nums) >= 2:
+        # Range, take average (e.g., "70-74" -> 72)
+        return (float(nums[0]) + float(nums[1])) / 2
+    return float(nums[0])
 
 def get_target_dates(selected_date_labels):
     dates = []
@@ -119,7 +130,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, matches_list):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -146,6 +157,26 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 books_data = await books_resp.json()
             
             books = {b["asset_id"]: b for b in books_data}
+            
+            # Sort markets by their numerical value to handle brackets/indices correctly
+            sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
+
+            # If gap filter is enabled, find the index of the market with the highest YES price
+            highest_idx = -1
+            if gap_filter_enabled:
+                max_yes_found = -1.0
+                for i, m in enumerate(sorted_markets):
+                    tokens = json.loads(m.get("clobTokenIds", "[]"))
+                    if len(tokens) < 2: continue
+                    y_id = tokens[0]
+                    y_book = books.get(y_id, {})
+                    y_asks = y_book.get("asks", [])
+                    if not y_asks: continue
+                    y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
+                    
+                    if y_p > max_yes_found:
+                        max_yes_found = y_p
+                        highest_idx = i
             
             for yes_id, info in market_map.items():
                 if info["side"] != "YES": continue
@@ -174,9 +205,26 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 if filter_yes and (min_p_yes/100) <= yes_price <= (max_p_yes/100):
                     is_match = True
                     matched_price = min(matched_price, yes_price * 100)
+                
                 if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
-                    is_match = True
-                    matched_price = min(matched_price, no_price * 100)
+                    # Gap Filter Logic: Only keep if at least 4 units (index-wise) away from highest price market
+                    # (Excludes 3 closest brackets on each side)
+                    pass_gap = True
+                    if gap_filter_enabled and highest_idx != -1:
+                        # Find current market's index in the sorted list
+                        current_idx = -1
+                        for idx, sm in enumerate(sorted_markets):
+                            if sm['id'] == m['id']:
+                                current_idx = idx
+                                break
+                        
+                        if current_idx != -1:
+                            if abs(current_idx - highest_idx) <= 3:
+                                pass_gap = False
+                    
+                    if pass_gap:
+                        is_match = True
+                        matched_price = min(matched_price, no_price * 100)
 
                 if is_match:
                     matches_list.append({
@@ -196,7 +244,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             pass
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, selected_cities, excluded_cities, selected_dates):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     
     # 1. Always exclude blacklisted cities
@@ -217,7 +265,7 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
             if not isinstance(m_types, list): m_types = [m_types]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, matches_list))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -311,7 +359,7 @@ with st.container():
         max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
     # NO Filter
-    n_head_col, n_in_col1, n_in_col2 = st.columns([1, 2, 2])
+    n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.7, 1.7, 0.6])
     with n_head_col:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
         filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
@@ -321,6 +369,9 @@ with st.container():
     with n_in_col2:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: -10px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
         max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
+    with n_gap_col:
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP</p>", unsafe_allow_html=True)
+        gap_filter_enabled = st.checkbox("Gap", value=config.get("gap_filter_enabled", False), label_visibility="collapsed", key="chk_gap")
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -336,6 +387,7 @@ if search_clicked:
         "max_p_no": max_p_no, 
         "filter_yes": filter_yes,
         "filter_no": filter_no,
+        "gap_filter_enabled": gap_filter_enabled,
         "selected_dates": selected_dates, 
         "selected_cities": selected_cities,
         "excluded_cities": excluded_cities
@@ -343,7 +395,7 @@ if search_clicked:
     save_config(current_config)
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, selected_cities, excluded_cities, selected_dates))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, selected_cities, excluded_cities, selected_dates))
     
     st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
     if results:
