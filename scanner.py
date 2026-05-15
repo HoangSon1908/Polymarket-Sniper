@@ -371,7 +371,8 @@ with st.container():
         max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_gap_col:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP</p>", unsafe_allow_html=True)
-        gap_filter_enabled = st.checkbox("Gap", value=config.get("gap_filter_enabled", False), label_visibility="collapsed", key="chk_gap", help="Lọc Gap: Chỉ giữ lại các kèo No cách ô có giá cao nhất ít nhất 4 vị trí (bỏ qua 3 ô gần nhất ở mỗi phía).")
+        gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap", help="Lọc Gap: Chỉ giữ lại các kèo No cách ô có giá cao nhất ít nhất 4 vị trí (bỏ qua 3 ô gần nhất ở mỗi phía).")
+        st.markdown("<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Bỏ qua 3 ô)</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
