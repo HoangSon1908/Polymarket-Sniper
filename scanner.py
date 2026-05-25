@@ -89,9 +89,9 @@ def load_config():
             pass
     return {
         "min_p_yes": 80.0,
-        "max_p_yes": 99.9,
+        "max_p_yes": 99.8,
         "min_p_no": 98.0,
-        "max_p_no": 99.9,
+        "max_p_no": 99.8,
         "filter_yes": True,
         "filter_no": True,
         "gap_filter_enabled": True,
