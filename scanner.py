@@ -89,16 +89,13 @@ def load_config():
             pass
     return {
         "min_p_yes": 80.0,
-        "max_p_yes": 99.7,
+        "max_p_yes": 99.9,
         "min_p_no": 98.0,
-        "max_p_no": 99.7,
+        "max_p_no": 99.9,
         "filter_yes": True,
         "filter_no": True,
         "gap_filter_enabled": True,
         "gap_value": 3,
-        "filter_traded_volume": True,
-        "min_traded_volume": 0.0,
-        "max_traded_volume": 100.0,
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
         "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"]
@@ -115,6 +112,7 @@ def parse_val(title):
     nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
     if not nums: return None
     if len(nums) >= 2:
+        # Range, take average (e.g., "70-74" -> 72)
         return (float(nums[0]) + float(nums[1])) / 2
     return float(nums[0])
 
@@ -133,7 +131,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, filters, matches_list):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -161,31 +159,31 @@ async def check_event(session, semaphore, city, date_info, m_type, filters, matc
             
             books = {b["asset_id"]: b for b in books_data}
             
+            # Sort markets by their numerical value to handle brackets/indices correctly
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-            highest_yes_idx = -1
-            max_yes_found = -1.0
-            for i, m in enumerate(sorted_markets):
-                tokens = json.loads(m.get("clobTokenIds", "[]"))
-                if len(tokens) < 2: continue
-                y_id = tokens[0]
-                y_book = books.get(y_id, {})
-                y_asks = y_book.get("asks", [])
-                if not y_asks: continue
-                y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
-                
-                if y_p > max_yes_found:
-                    max_yes_found = y_p
-                    highest_yes_idx = i
+            # If gap filter is enabled, find the index of the market with the highest YES price
+            highest_idx = -1
+            if gap_filter_enabled:
+                max_yes_found = -1.0
+                for i, m in enumerate(sorted_markets):
+                    tokens = json.loads(m.get("clobTokenIds", "[]"))
+                    if len(tokens) < 2: continue
+                    y_id = tokens[0]
+                    y_book = books.get(y_id, {})
+                    y_asks = y_book.get("asks", [])
+                    if not y_asks: continue
+                    y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
+                    
+                    if y_p > max_yes_found:
+                        max_yes_found = y_p
+                        highest_idx = i
             
             for yes_id, info in market_map.items():
                 if info["side"] != "YES": continue
                 m = info["m"]
                 no_id = info["other"]
                 evt = info["event"]
-                
-                # Traded Volume (Khối lượng lịch sử đã khớp)
-                traded_volume = float(m.get("volume", 0.0))
                 
                 yes_book = books.get(yes_id, {})
                 no_book = books.get(no_id, {})
@@ -199,43 +197,36 @@ async def check_event(session, semaphore, city, date_info, m_type, filters, matc
                 y_depth = float(min(y_asks, key=lambda x: float(x["price"]))["size"]) if y_asks else 0.0
                 n_depth = float(min(n_asks, key=lambda x: float(x["price"]))["size"]) if n_asks else 0.0
                 
-                est_book_depth = (y_depth * yes_price) + (n_depth * no_price)
+                # Spread Calculation
                 spread = (yes_price + no_price) * 100 - 100
                 
-                pass_yes = True
-                pass_no = True
-                pass_gap = True
-                pass_volume = True
-
-                if filters["filter_yes"]:
-                    if not ((filters["min_p_yes"] / 100) <= yes_price <= (filters["max_p_yes"] / 100)):
-                        pass_yes = False
+                is_match = False
+                matched_price = 100.0
                 
-                if filters["filter_no"]:
-                    if not ((filters["min_p_no"] / 100) <= no_price <= (filters["max_p_no"] / 100)):
-                        pass_no = False
+                if filter_yes and (min_p_yes/100) <= yes_price <= (max_p_yes/100):
+                    is_match = True
+                    matched_price = min(matched_price, yes_price * 100)
+                
+                if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
+                    # Gap Filter Logic: Excludes `gap_value` closest brackets on each side
+                    pass_gap = True
+                    if gap_filter_enabled and highest_idx != -1:
+                        # Find current market's index in the sorted list
+                        current_idx = -1
+                        for idx, sm in enumerate(sorted_markets):
+                            if sm['id'] == m['id']:
+                                current_idx = idx
+                                break
+                        
+                        if current_idx != -1:
+                            if abs(current_idx - highest_idx) <= gap_value:
+                                pass_gap = False
+                    
+                    if pass_gap:
+                        is_match = True
+                        matched_price = min(matched_price, no_price * 100)
 
-                if filters["gap_filter_enabled"] and highest_yes_idx != -1:
-                    current_idx = -1
-                    for idx, sm in enumerate(sorted_markets):
-                        if sm['id'] == m['id']:
-                            current_idx = idx
-                            break
-                    if current_idx != -1:
-                        if abs(current_idx - highest_yes_idx) <= filters["gap_value"]:
-                            pass_gap = False
-
-                # Lọc theo Traded Volume (Khối lượng đã khớp lệnh)
-                if filters["filter_traded_volume"]:
-                    if not (filters["min_traded_volume"] <= traded_volume <= filters["max_traded_volume"]):
-                        pass_volume = False
-
-                if pass_yes and pass_no and pass_gap and pass_volume:
-                    matched_price = 100.0
-                    if filters["filter_yes"]: matched_price = min(matched_price, yes_price * 100)
-                    if filters["filter_no"]: matched_price = min(matched_price, no_price * 100)
-                    if matched_price == 100.0: matched_price = min(yes_price, no_price) * 100
-
+                if is_match:
                     matches_list.append({
                         "City": city["name"],
                         "Date": date_info["display"],
@@ -245,8 +236,6 @@ async def check_event(session, semaphore, city, date_info, m_type, filters, matc
                         "NO": no_price * 100,
                         "YES_Depth": y_depth,
                         "NO_Depth": n_depth,
-                        "Traded Volume": traded_volume,
-                        "Est Book Depth": est_book_depth,
                         "Spread": spread,
                         "MatchedPrice": matched_price,
                         "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
@@ -255,25 +244,28 @@ async def check_event(session, semaphore, city, date_info, m_type, filters, matc
         except Exception:
             pass
 
-async def run_scan(filters, selected_cities, excluded_cities, selected_dates):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
+    
+    # 1. Always exclude blacklisted cities
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
+        
+    # 2. If specific cities are selected, use only those (they should already be non-blacklisted due to UI logic)
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
-        
     dates = get_target_dates(selected_dates)
     matches_list = []
     semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
-    
     async with aiohttp.ClientSession() as session:
         tasks = []
         for city in cities_to_scan:
+            # Always scan all available market types (Highest/Lowest)
             m_types = city.get("marketType")
             if not isinstance(m_types, list): m_types = [m_types]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, filters, matches_list))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -295,10 +287,10 @@ st.markdown("""
     .market-row:last-child { border-bottom: none; }
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
-    .spread-box { padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; font-weight: bold; }
+    .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
     .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
-    .open-link { background-color: #1f6feb; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-    .open-link:hover { background-color: #388bfd; }
+    .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
+    .open-link:hover { background-color: #2ea043; }
     .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>
 """, unsafe_allow_html=True)
@@ -307,17 +299,21 @@ with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
     all_city_names = sorted([c["name"] for c in CITIES_DATA])
     
+    # Initialize session states
     if "selected_cities" not in st.session_state:
         st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     if "excluded_cities" not in st.session_state:
         st.session_state.excluded_cities = config.get("excluded_cities", [])
 
+    # Filter out any overlaps that might exist from config load
     st.session_state.selected_cities = [c for c in st.session_state.selected_cities if c not in st.session_state.excluded_cities]
 
+    # --- Blacklist Multiselect (Options depend on selected_cities) ---
     exclude_options = [c for c in all_city_names if c not in st.session_state.selected_cities]
     excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
     st.session_state.excluded_cities = excluded_cities
     
+    # --- Preset Buttons ---
     preset_col1, preset_col2, preset_col3 = st.columns([1.5, 1.5, 1])
     with preset_col1:
         if st.button("Morning Cities", use_container_width=True): 
@@ -333,6 +329,7 @@ with st.container():
             st.session_state.selected_cities = []
             st.rerun()
     
+    # --- Selection Multiselect (Options depend on excluded_cities) ---
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
@@ -344,14 +341,11 @@ with st.container():
     with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
     with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
-    st.markdown("<hr style='border-color:#30363d;' />", unsafe_allow_html=True)
-    st.markdown("#### 🛠️ SCAN FILTERS (4 METHODS)")
-
-    # 1. YES Filter
+    # YES Filter
     y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
     with y_head_col:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>1. SCAN YES</p>", unsafe_allow_html=True)
-        filter_yes = st.checkbox("Enable YES Filter", value=config.get("filter_yes", True), key="chk_yes")
+        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
+        filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes")
     with y_in_col1:
         st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
         min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
@@ -359,39 +353,25 @@ with st.container():
         st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
         max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
-    # 2. NO Filter
-    n_head_col, n_in_col1, n_in_col2 = st.columns([1, 2, 2])
+    # NO Filter
+    n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.5, 1.5, 1.0])
     with n_head_col:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>2. SCAN NO</p>", unsafe_allow_html=True)
-        filter_no = st.checkbox("Enable NO Filter", value=config.get("filter_no", True), key="chk_no")
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
+        filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
     with n_in_col1:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
         min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_in_col2:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
         max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
-
-    # 3 & 4. GAP & TRADED VOLUME Filters
-    gap_col, vol_col = st.columns([1, 1.5])
-    with gap_col:
-        st.markdown("<p style='font-weight: 600; color: #db6d28; margin-bottom: 5px;'>3. STANDALONE GAP FILTER</p>", unsafe_allow_html=True)
-        gc1, gc2 = st.columns([1.5, 2])
+    with n_gap_col:
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
+        gc1, gc2 = st.columns([1, 2])
         with gc1:
-            gap_filter_enabled = st.checkbox("Enable Gap", value=config.get("gap_filter_enabled", False), key="chk_gap")
+            gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap")
         with gc2:
-            gap_value = st.number_input("Skip closest brackets", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
-        st.markdown(f"<p style='color:#8b949e; font-size:0.75rem; margin-top:-5px;'>(Excludes {gap_value} brackets on either side of peak YES)</p>", unsafe_allow_html=True)
-        
-    with vol_col:
-        st.markdown("<p style='font-weight: 600; color: #58a6ff; margin-bottom: 5px;'>4. TRADED VOLUME FILTER (Săn Thị Trường Mới)</p>", unsafe_allow_html=True)
-        vc1, vc2, vc3 = st.columns([1.5, 2, 2])
-        with vc1:
-            filter_traded_volume = st.checkbox("Enable Filter", value=config.get("filter_traded_volume", True), key="chk_vol")
-        with vc2:
-            min_traded_volume = st.number_input("Min Traded ($)", min_value=0.0, max_value=100000.0, value=config.get("min_traded_volume", 0.0), step=10.0, format="%.1f", label_visibility="collapsed")
-        with vc3:
-            max_traded_volume = st.number_input("Max Traded ($)", min_value=0.0, max_value=100000.0, value=config.get("max_traded_volume", 100.0), step=10.0, format="%.1f", label_visibility="collapsed")
-        st.markdown("<p style='color:#8b949e; font-size:0.75rem; margin-top:-5px;'>(Ví dụ: Để Max = 100$ để chỉ hiển thị các market cực mới hoặc thanh khoản chết)</p>", unsafe_allow_html=True)
+            gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
+        st.markdown(f"<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} closest)</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -409,71 +389,38 @@ if search_clicked:
         "filter_no": filter_no,
         "gap_filter_enabled": gap_filter_enabled,
         "gap_value": gap_value,
-        "filter_traded_volume": filter_traded_volume,
-        "min_traded_volume": min_traded_volume,
-        "max_traded_volume": max_traded_volume,
         "selected_dates": selected_dates, 
         "selected_cities": selected_cities,
         "excluded_cities": excluded_cities
     }
     save_config(current_config)
 
-    filters = {
-        "filter_yes": filter_yes,
-        "min_p_yes": min_p_yes,
-        "max_p_yes": max_p_yes,
-        "filter_no": filter_no,
-        "min_p_no": min_p_no,
-        "max_p_no": max_p_no,
-        "gap_filter_enabled": gap_filter_enabled,
-        "gap_value": gap_value,
-        "filter_traded_volume": filter_traded_volume,
-        "min_traded_volume": min_traded_volume,
-        "max_traded_volume": max_traded_volume
-    }
-
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(filters, selected_cities, excluded_cities, selected_dates))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, selected_cities, excluded_cities, selected_dates))
     
     st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
     if results:
         df = pd.DataFrame(results)
-        
-        # SẮP XẾP TĂNG DẦN THEO TRADED VOLUME 
-        # Nhóm thành phố có market volume nhỏ nhất sẽ được đẩy lên đầu tiên
-        city_min_vols = df.groupby('City')['Traded Volume'].min()
-        sorted_cities = city_min_vols.sort_values(ascending=True).index
-        
+        city_min_prices = df.groupby('City')['MatchedPrice'].min()
+        sorted_cities = city_min_prices.sort_values(ascending=True).index
         for city_name in sorted_cities:
-            # Các sự kiện bên trong mỗi thành phố cũng được sắp xếp theo Traded Volume tăng dần
-            city_results = df[df['City'] == city_name].sort_values(by="Traded Volume", ascending=True)
-            
+            city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span><span style="background:#21262d; padding:2px 8px; border-radius:10px; font-size:0.7rem">{len(city_results)} events</span></div>""", unsafe_allow_html=True)
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
-                    
+                    # Chỉ lấy market có giá rẻ nhất (MatchedPrice thấp nhất) cho mỗi sự kiện
                     row = event_markets.iloc[0]
-                    
-                    # Highlight Spread: Xanh lá nếu Spread < 0
-                    spread_color = "#3fb950" if row['Spread'] < 0 else "#8b949e"
-                    spread_bg = "#0d4429" if row['Spread'] < 0 else "#21262d"
-                    
                     st.markdown(f"""
                     <div class="market-row">
-                        <div style="flex:2; color:#e6edf3">{row['Market']} 
-                            <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span>
-                            <div style="color:#58a6ff; font-size:0.75rem; margin-top:2px;">
-                                Traded Vol: <b>${row['Traded Volume']:,.2f}</b> | 
-                            </div>
-                        </div>
+                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
                             <div style="text-align:center">
                                 <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
                                 <div class="depth-text">${row['YES_Depth']:,.0f}</div>
                             </div>
-                            <div class="spread-box" style="color: {spread_color}; background-color: {spread_bg}; border-color: {spread_color}">Spread {row['Spread']:.1f}¢</div>
+                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
                             <div style="text-align:center">
                                 <div class="price-btn-no">No {row['NO']:.1f}¢</div>
                                 <div class="depth-text">${row['NO_Depth']:,.0f}</div>
@@ -487,7 +434,6 @@ if search_clicked:
                     st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
-    else: 
-        st.warning("No markets match your criteria. Try adjusting your active filters.")
+    else: st.warning("No markets match your criteria.")
 else:
     st.info("Select cities and filters, then click 'Search Markets' to begin.")
