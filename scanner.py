@@ -463,4 +463,32 @@ if search_clicked:
                     st.markdown(f"""
                     <div class="market-row">
                         <div style="flex:2; color:#e6edf3">{row['Market']} 
-                            <span style="color:#8b949e; font-size:0.7
+                            <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span>
+                            <div style="color:#58a6ff; font-size:0.75rem; margin-top:2px;">
+                                Traded Vol: <b>${row['Traded Volume']:,.2f}</b> | 
+                                <span style="color:#8b949e">Est. Limit Depth: ${row['Est Book Depth']:,.2f}</span>
+                            </div>
+                        </div>
+                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                            <div style="text-align:center">
+                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
+                            </div>
+                            <div class="spread-box" style="color: {spread_color}; background-color: {spread_bg}; border-color: {spread_color}">Spread {row['Spread']:.1f}¢</div>
+                            <div style="text-align:center">
+                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
+                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
+                            </div>
+                        </div>
+                        <div style="flex:1; text-align:right">
+                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
+    else: 
+        st.warning("No markets match your criteria. Try adjusting your active filters.")
+else:
+    st.info("Select cities and filters, then click 'Search Markets' to begin.")
