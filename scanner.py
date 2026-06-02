@@ -466,7 +466,6 @@ if search_clicked:
                             <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span>
                             <div style="color:#58a6ff; font-size:0.75rem; margin-top:2px;">
                                 Traded Vol: <b>${row['Traded Volume']:,.2f}</b> | 
-                                <span style="color:#8b949e">Est. Limit Depth: ${row['Est Book Depth']:,.2f}</span>
                             </div>
                         </div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
