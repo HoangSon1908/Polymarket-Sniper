@@ -70,7 +70,7 @@ CITIES_DATA = [
 
 DEFAULT_FAVORITE_CITIES = [
     "Tokyo", "Seoul", "Busan", "Singapore", "Shanghai", "Wuhan", "Chengdu", 
-    "Chongqing", "Beijing", "Kuala Lumpur", "Taipei", "Qingdao", "Manila", 
+    "Chongqing", "Beijing", "Kuala Lumpur", "Taipei", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
     "London", "Ankara", "Helsinki", "Istanbul", "Moscow"
@@ -98,7 +98,7 @@ def load_config():
         "gap_value": 3,
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
-        "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"]
+        "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao"]
     }
 
 def save_config(config_data):
