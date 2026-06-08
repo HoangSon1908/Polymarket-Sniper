@@ -226,13 +226,20 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                                 elif gap_direction == "Down": eff_dir = "Up"
                             
                             if eff_dir == "Both":
+                                # Bỏ qua các kèo nằm trong khoảng gap (cả trên và dưới)
                                 if abs(current_idx - highest_idx) <= gap_value:
                                     pass_gap = False
-                            elif eff_dir == "Up": # Chỉ lấy các kèo trên (từ cao hơn trở đi)
-                                if current_idx < highest_idx + gap_value:
+                                    
+                            elif eff_dir == "Up": 
+                                # Chỉ lấy các kèo TRÊN vùng gap 
+                                # (Bỏ qua toàn bộ kèo bằng, nhỏ hơn và nằm trong vùng gap)
+                                if current_idx <= highest_idx + gap_value:
                                     pass_gap = False
-                            elif eff_dir == "Down": # Chỉ lấy các kèo dưới (từ thấp hơn trở đi)
-                                if current_idx > highest_idx - gap_value:
+                                    
+                            elif eff_dir == "Down": 
+                                # Chỉ lấy các kèo DƯỚI vùng gap 
+                                # (Bỏ qua toàn bộ kèo bằng, cao hơn và nằm trong vùng gap)
+                                if current_idx >= highest_idx - gap_value:
                                     pass_gap = False
                     
                     if pass_gap:
