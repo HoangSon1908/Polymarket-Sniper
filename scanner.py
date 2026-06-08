@@ -398,18 +398,28 @@ if search_clicked:
     with st.spinner("Finding markets..."):
         results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, selected_cities, excluded_cities, selected_dates))
     
-    st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{len(results)}</span>", unsafe_allow_html=True)
+    # Tính toán số lượng thành phố quét và số thành phố đạt chuẩn
+    total_scanned_cities = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
+    
     if results:
         df = pd.DataFrame(results)
         city_min_prices = df.groupby('City')['MatchedPrice'].min()
         sorted_cities = city_min_prices.sort_values(ascending=True).index
+        matched_cities_count = len(sorted_cities)
+        
+        # Thay đổi hiển thị tiêu đề: Số thành phố đạt chuẩn / Tổng số thành phố quét
+        st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
-                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span><span style="background:#21262d; padding:2px 8px; border-radius:10px; font-size:0.7rem">{len(city_results)} events</span></div>""", unsafe_allow_html=True)
+                # ĐÃ BỎ: Phần hiển thị số lượng event (6 events) bên phải tên thành phố
+                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
+                
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
+                    
                     # Chỉ lấy market có giá rẻ nhất (MatchedPrice thấp nhất) cho mỗi sự kiện
                     row = event_markets.iloc[0]
                     st.markdown(f"""
@@ -434,6 +444,9 @@ if search_clicked:
                     st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
-    else: st.warning("No markets match your criteria.")
+    else:
+        # Trường hợp không có kết quả nào đạt chuẩn
+        st.markdown(f"### Search Results <span style='background:#f85149; padding:2px 10px; border-radius:10px; font-size:0.8rem'>0/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        st.warning("No markets match your criteria.")
 else:
     st.info("Select cities and filters, then click 'Search Markets' to begin.")
