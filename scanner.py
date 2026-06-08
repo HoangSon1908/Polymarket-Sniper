@@ -96,6 +96,7 @@ def load_config():
         "filter_no": True,
         "gap_filter_enabled": True,
         "gap_value": 3,
+        "gap_direction": "Both",
         "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
         "selected_cities": DEFAULT_FAVORITE_CITIES,
         "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"]
@@ -131,7 +132,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, matches_list):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -208,10 +209,8 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                     matched_price = min(matched_price, yes_price * 100)
                 
                 if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
-                    # Gap Filter Logic: Excludes `gap_value` closest brackets on each side
                     pass_gap = True
                     if gap_filter_enabled and highest_idx != -1:
-                        # Find current market's index in the sorted list
                         current_idx = -1
                         for idx, sm in enumerate(sorted_markets):
                             if sm['id'] == m['id']:
@@ -219,8 +218,22 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                                 break
                         
                         if current_idx != -1:
-                            if abs(current_idx - highest_idx) <= gap_value:
-                                pass_gap = False
+                            diff = current_idx - highest_idx
+                            
+                            effective_dir = gap_direction
+                            if m_type == "lowest":
+                                if gap_direction == "Up": effective_dir = "Down"
+                                elif gap_direction == "Down": effective_dir = "Up"
+                            
+                            if effective_dir == "Both":
+                                if abs(diff) <= gap_value:
+                                    pass_gap = False
+                            elif effective_dir == "Up":
+                                if diff <= gap_value:  
+                                    pass_gap = False
+                            elif effective_dir == "Down":
+                                if diff >= -gap_value: 
+                                    pass_gap = False
                     
                     if pass_gap:
                         is_match = True
@@ -244,14 +257,14 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             pass
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, selected_cities, excluded_cities, selected_dates):
+async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     
     # 1. Always exclude blacklisted cities
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
         
-    # 2. If specific cities are selected, use only those (they should already be non-blacklisted due to UI logic)
+    # 2. If specific cities are selected, use only those
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
     dates = get_target_dates(selected_dates)
@@ -260,12 +273,11 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
     async with aiohttp.ClientSession() as session:
         tasks = []
         for city in cities_to_scan:
-            # Always scan all available market types (Highest/Lowest)
             m_types = city.get("marketType")
             if not isinstance(m_types, list): m_types = [m_types]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, matches_list))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -305,10 +317,9 @@ with st.container():
     if "excluded_cities" not in st.session_state:
         st.session_state.excluded_cities = config.get("excluded_cities", [])
 
-    # Filter out any overlaps that might exist from config load
     st.session_state.selected_cities = [c for c in st.session_state.selected_cities if c not in st.session_state.excluded_cities]
 
-    # --- Blacklist Multiselect (Options depend on selected_cities) ---
+    # --- Blacklist Multiselect ---
     exclude_options = [c for c in all_city_names if c not in st.session_state.selected_cities]
     excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
     st.session_state.excluded_cities = excluded_cities
@@ -329,7 +340,7 @@ with st.container():
             st.session_state.selected_cities = []
             st.rerun()
     
-    # --- Selection Multiselect (Options depend on excluded_cities) ---
+    # --- Selection Multiselect ---
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
@@ -366,12 +377,14 @@ with st.container():
         max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_gap_col:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
-        gc1, gc2 = st.columns([1, 2])
+        gc1, gc2, gc3 = st.columns([0.5, 1, 1.5])
         with gc1:
             gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap")
         with gc2:
             gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
-        st.markdown(f"<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} closest)</p>", unsafe_allow_html=True)
+        with gc3:
+            gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed")
+        st.markdown(f"<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -389,6 +402,7 @@ if search_clicked:
         "filter_no": filter_no,
         "gap_filter_enabled": gap_filter_enabled,
         "gap_value": gap_value,
+        "gap_direction": gap_direction,
         "selected_dates": selected_dates, 
         "selected_cities": selected_cities,
         "excluded_cities": excluded_cities
@@ -396,9 +410,8 @@ if search_clicked:
     save_config(current_config)
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, selected_cities, excluded_cities, selected_dates))
+        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
     
-    # Tính toán số lượng thành phố quét và số thành phố đạt chuẩn
     total_scanned_cities = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
     
     if results:
@@ -407,20 +420,17 @@ if search_clicked:
         sorted_cities = city_min_prices.sort_values(ascending=True).index
         matched_cities_count = len(sorted_cities)
         
-        # Thay đổi hiển thị tiêu đề: Số thành phố đạt chuẩn / Tổng số thành phố quét
         st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
-                # ĐÃ BỎ: Phần hiển thị số lượng event (6 events) bên phải tên thành phố
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
                 
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
                     
-                    # Chỉ lấy market có giá rẻ nhất (MatchedPrice thấp nhất) cho mỗi sự kiện
                     row = event_markets.iloc[0]
                     st.markdown(f"""
                     <div class="market-row">
@@ -445,7 +455,6 @@ if search_clicked:
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
     else:
-        # Trường hợp không có kết quả nào đạt chuẩn
         st.markdown(f"### Search Results <span style='background:#f85149; padding:2px 10px; border-radius:10px; font-size:0.8rem'>0/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         st.warning("No markets match your criteria.")
 else:
