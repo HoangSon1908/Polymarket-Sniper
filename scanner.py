@@ -289,7 +289,15 @@ st.markdown("""
     header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
     .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-    .result-card-entered { background-color: #0f1c15; border: 1px solid #238636; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+    .result-card-entered { 
+        background-color: #112a1c; /* Nền xanh rêu sáng hơn rõ rệt */
+        border: 1px solid #30363d; 
+        border-left: 4px solid #3fb950; /* Viền trái cực dày màu xanh neon */
+        border-radius: 8px; 
+        padding: 15px; 
+        margin-bottom: 15px; 
+        box-shadow: 0 0 8px rgba(63, 185, 80, 0.15); /* Hiệu ứng phát sáng nhẹ */
+    }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
     .market-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
