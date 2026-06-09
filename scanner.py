@@ -113,6 +113,7 @@ def parse_val(title):
     nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
     if not nums: return None
     if len(nums) >= 2:
+        # Range, take average (e.g., "70-74" -> 72)
         return (float(nums[0]) + float(nums[1])) / 2
     return float(nums[0])
 
@@ -158,8 +159,11 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 books_data = await books_resp.json()
             
             books = {b["asset_id"]: b for b in books_data}
+            
+            # Sort markets by their numerical value to handle brackets/indices correctly
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
+            # If gap filter is enabled, find the index of the market with the highest YES price
             highest_idx = -1
             if gap_filter_enabled:
                 max_yes_found = -1.0
@@ -194,6 +198,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 y_depth = float(min(y_asks, key=lambda x: float(x["price"]))["size"]) if y_asks else 0.0
                 n_depth = float(min(n_asks, key=lambda x: float(x["price"]))["size"]) if n_asks else 0.0
                 
+                # Spread Calculation
                 spread = (yes_price + no_price) * 100 - 100
                 
                 is_match = False
@@ -254,8 +259,12 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
 
 async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
+    
+    # 1. Always exclude blacklisted cities
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
+        
+    # 2. If specific cities are selected, use only those
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
     dates = get_target_dates(selected_dates)
@@ -276,11 +285,6 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 config = load_config()
 
-# Khởi tạo state quản lý thành phố đã vào kèo nếu chưa có
-if "entered_cities" not in st.session_state:
-    st.session_state.entered_cities = []
-
-# CSS nâng cấp bọc Unified Card
 st.markdown("""
 <div id="top"></div>
 <style>
@@ -288,27 +292,8 @@ st.markdown("""
     .stApp { background-color: #0e1117; }
     header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
     .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
-    
-    /* CSS bọc container mẹ sử dụng :has */
-    div[data-testid="stVerticalBlock"]:has(.marker-normal):not(:has(div[data-testid="stVerticalBlock"]:has(.marker-normal))) {
-        background-color: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-    }
-
-    div[data-testid="stVerticalBlock"]:has(.marker-entered):not(:has(div[data-testid="stVerticalBlock"]:has(.marker-entered))) {
-        background-color: #0f1c15;
-        border: 1px solid #238636;
-        border-left: 4px solid #3fb950;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-        box-shadow: 0 0 8px rgba(63, 185, 80, 0.15);
-    }
-    
-    .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+    .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
     .market-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
     .market-row:last-child { border-bottom: none; }
@@ -316,8 +301,8 @@ st.markdown("""
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
     .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
-    .open-link { background-color: #1f6feb; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-    .open-link:hover { background-color: #388bfd; }
+    .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
+    .open-link:hover { background-color: #2ea043; }
     .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>
 """, unsafe_allow_html=True)
@@ -326,6 +311,7 @@ with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
     all_city_names = sorted([c["name"] for c in CITIES_DATA])
     
+    # Initialize session states
     if "selected_cities" not in st.session_state:
         st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     if "excluded_cities" not in st.session_state:
@@ -426,12 +412,7 @@ if search_clicked:
     with st.spinner("Finding markets..."):
         results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
     
-    st.session_state.search_results_data = results
-    st.session_state.total_scanned_cities_count = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
-
-if "search_results_data" in st.session_state:
-    results = st.session_state.search_results_data
-    total_scanned_cities = st.session_state.total_scanned_cities_count
+    total_scanned_cities = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
     
     if results:
         df = pd.DataFrame(results)
@@ -439,70 +420,42 @@ if "search_results_data" in st.session_state:
         sorted_cities = city_min_prices.sort_values(ascending=True).index
         matched_cities_count = len(sorted_cities)
         
-        title_col, clear_data_col = st.columns([3, 1])
-        with title_col:
-            st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
-        with clear_data_col:
-            if st.session_state.entered_cities:
-                if st.button("🗑️ Xóa dữ liệu vào kèo", use_container_width=True):
-                    st.session_state.entered_cities = []
-                    st.rerun()
+        st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
-            is_entered = city_name in st.session_state.entered_cities
-            
             with st.container():
-                # Bơm marker ẩn để CSS nhận diện và đóng khung toàn bộ Container
-                marker_class = "marker-entered" if is_entered else "marker-normal"
-                st.markdown(f"<span class='{marker_class}' style='display:none'></span>", unsafe_allow_html=True)
+                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
                 
-                # Header thành phố
-                header_text_col, header_btn_col = st.columns([4, 1])
-                with header_text_col:
-                    st.markdown(f"""<div class="city-header" style="margin-bottom:0px;"><span>{city_name}</span></div>""", unsafe_allow_html=True)
-                with header_btn_col:
-                    if not is_entered:
-                        if st.button("✅ Vào Kèo", key=f"enter_{city_name}", use_container_width=True):
-                            st.session_state.entered_cities.append(city_name)
-                            st.rerun()
-                    else:
-                        if st.button("❌ Hủy Đánh Dấu", key=f"leave_{city_name}", use_container_width=True):
-                            st.session_state.entered_cities.remove(city_name)
-                            st.rerun()
-                
-                # Render danh sách sự kiện
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
-                    row = event_markets.iloc[0]
+                    st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
                     
-                    event_html = f"""
-                    <div class='event-box'>
-                        <div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>
-                        <div class="market-row">
-                            <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
-                            <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
-                                <div style="text-align:center">
-                                    <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
-                                    <div class="depth-text">${row['YES_Depth']:,.0f}</div>
-                                </div>
-                                <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
-                                <div style="text-align:center">
-                                    <div class="price-btn-no">No {row['NO']:.1f}¢</div>
-                                    <div class="depth-text">${row['NO_Depth']:,.0f}</div>
-                                </div>
+                    row = event_markets.iloc[0]
+                    st.markdown(f"""
+                    <div class="market-row">
+                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                            <div style="text-align:center">
+                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
                             </div>
-                            <div style="flex:1; text-align:right">
-                                <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                            <div style="text-align:center">
+                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
+                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
                             </div>
                         </div>
+                        <div style="flex:1; text-align:right">
+                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                        </div>
                     </div>
-                    """
-                    st.markdown(event_html, unsafe_allow_html=True)
-                    
+                    """, unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
     else:
         st.markdown(f"### Search Results <span style='background:#f85149; padding:2px 10px; border-radius:10px; font-size:0.8rem'>0/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         st.warning("No markets match your criteria.")
-elif not search_clicked:
+else:
     st.info("Select cities and filters, then click 'Search Markets' to begin.")
