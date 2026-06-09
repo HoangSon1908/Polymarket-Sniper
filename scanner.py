@@ -89,9 +89,9 @@ def load_config():
             pass
     return {
         "min_p_yes": 80.0,
-        "max_p_yes": 99.7,
+        "max_p_yes": 99.9,
         "min_p_no": 98.0,
-        "max_p_no": 99.7,
+        "max_p_no": 99.9,
         "filter_yes": True,
         "filter_no": True,
         "gap_filter_enabled": True,
@@ -280,7 +280,7 @@ config = load_config()
 if "entered_cities" not in st.session_state:
     st.session_state.entered_cities = []
 
-# Cập nhật thêm CSS class cho thành phố đã vào kèo (.result-card-entered)
+# CSS nâng cấp bọc Unified Card
 st.markdown("""
 <div id="top"></div>
 <style>
@@ -288,7 +288,8 @@ st.markdown("""
     .stApp { background-color: #0e1117; }
     header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
     .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
-    /* --- CSS thay thế cho .result-card và .result-card-entered --- */
+    
+    /* CSS bọc container mẹ sử dụng :has */
     div[data-testid="stVerticalBlock"]:has(.marker-normal):not(:has(div[data-testid="stVerticalBlock"]:has(.marker-normal))) {
         background-color: #161b22;
         border: 1px solid #30363d;
@@ -306,6 +307,7 @@ st.markdown("""
         margin-bottom: 15px;
         box-shadow: 0 0 8px rgba(63, 185, 80, 0.15);
     }
+    
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
     .market-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
@@ -424,11 +426,9 @@ if search_clicked:
     with st.spinner("Finding markets..."):
         results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
     
-    # Lưu kết quả tìm kiếm vào session_state để không bị mất khi bấm nút Vào Kèo/Hủy
     st.session_state.search_results_data = results
     st.session_state.total_scanned_cities_count = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
 
-# Hiển thị kết quả từ session_state (nếu có dữ liệu)
 if "search_results_data" in st.session_state:
     results = st.session_state.search_results_data
     total_scanned_cities = st.session_state.total_scanned_cities_count
@@ -439,13 +439,12 @@ if "search_results_data" in st.session_state:
         sorted_cities = city_min_prices.sort_values(ascending=True).index
         matched_cities_count = len(sorted_cities)
         
-        # Tiêu đề kết quả và nút xóa dữ liệu vào kèo
         title_col, clear_data_col = st.columns([3, 1])
         with title_col:
             st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         with clear_data_col:
             if st.session_state.entered_cities:
-                if st.button("🗑️ Xóa dữ liệu vào kèo", use_container_width=True, help="Reset trạng thái tất cả thành phố về chưa vào kèo"):
+                if st.button("🗑️ Xóa dữ liệu vào kèo", use_container_width=True):
                     st.session_state.entered_cities = []
                     st.rerun()
         
@@ -454,11 +453,11 @@ if "search_results_data" in st.session_state:
             is_entered = city_name in st.session_state.entered_cities
             
             with st.container():
-                # Bơm marker ẩn để CSS nhận diện và đóng khung toàn bộ Container này
+                # Bơm marker ẩn để CSS nhận diện và đóng khung toàn bộ Container
                 marker_class = "marker-entered" if is_entered else "marker-normal"
                 st.markdown(f"<span class='{marker_class}' style='display:none'></span>", unsafe_allow_html=True)
                 
-                # Header thành phố: Tên bên trái, Nút trạng thái bên phải
+                # Header thành phố
                 header_text_col, header_btn_col = st.columns([4, 1])
                 with header_text_col:
                     st.markdown(f"""<div class="city-header" style="margin-bottom:0px;"><span>{city_name}</span></div>""", unsafe_allow_html=True)
@@ -472,7 +471,7 @@ if "search_results_data" in st.session_state:
                             st.session_state.entered_cities.remove(city_name)
                             st.rerun()
                 
-                # Render danh sách sự kiện bên trong cùng container
+                # Render danh sách sự kiện
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     row = event_markets.iloc[0]
