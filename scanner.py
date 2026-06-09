@@ -89,9 +89,9 @@ def load_config():
             pass
     return {
         "min_p_yes": 80.0,
-        "max_p_yes": 99.7,
+        "max_p_yes": 99.9,
         "min_p_no": 98.0,
-        "max_p_no": 99.7,
+        "max_p_no": 99.9,
         "filter_yes": True,
         "filter_no": True,
         "gap_filter_enabled": True,
@@ -113,7 +113,6 @@ def parse_val(title):
     nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
     if not nums: return None
     if len(nums) >= 2:
-        # Range, take average (e.g., "70-74" -> 72)
         return (float(nums[0]) + float(nums[1])) / 2
     return float(nums[0])
 
@@ -159,11 +158,8 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 books_data = await books_resp.json()
             
             books = {b["asset_id"]: b for b in books_data}
-            
-            # Sort markets by their numerical value to handle brackets/indices correctly
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-            # If gap filter is enabled, find the index of the market with the highest YES price
             highest_idx = -1
             if gap_filter_enabled:
                 max_yes_found = -1.0
@@ -198,7 +194,6 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 y_depth = float(min(y_asks, key=lambda x: float(x["price"]))["size"]) if y_asks else 0.0
                 n_depth = float(min(n_asks, key=lambda x: float(x["price"]))["size"]) if n_asks else 0.0
                 
-                # Spread Calculation
                 spread = (yes_price + no_price) * 100 - 100
                 
                 is_match = False
@@ -259,12 +254,8 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
 
 async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
-    
-    # 1. Always exclude blacklisted cities
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
-        
-    # 2. If specific cities are selected, use only those
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
     dates = get_target_dates(selected_dates)
@@ -285,6 +276,11 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 config = load_config()
 
+# Khởi tạo state quản lý thành phố đã vào kèo nếu chưa có
+if "entered_cities" not in st.session_state:
+    st.session_state.entered_cities = []
+
+# Cập nhật thêm CSS class cho thành phố đã vào kèo (.result-card-entered)
 st.markdown("""
 <div id="top"></div>
 <style>
@@ -293,7 +289,8 @@ st.markdown("""
     header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
     .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-    .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
+    .result-card-entered { background-color: #0f1c15; border: 1px solid #238636; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+    .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
     .market-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
     .market-row:last-child { border-bottom: none; }
@@ -301,8 +298,8 @@ st.markdown("""
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
     .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
-    .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-    .open-link:hover { background-color: #2ea043; }
+    .open-link { background-color: #1f6feb; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
+    .open-link:hover { background-color: #388bfd; }
     .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>
 """, unsafe_allow_html=True)
@@ -311,7 +308,6 @@ with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
     all_city_names = sorted([c["name"] for c in CITIES_DATA])
     
-    # Initialize session states
     if "selected_cities" not in st.session_state:
         st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     if "excluded_cities" not in st.session_state:
@@ -412,7 +408,14 @@ if search_clicked:
     with st.spinner("Finding markets..."):
         results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
     
-    total_scanned_cities = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
+    # Lưu kết quả tìm kiếm vào session_state để không bị mất khi bấm nút Vào Kèo/Hủy
+    st.session_state.search_results_data = results
+    st.session_state.total_scanned_cities_count = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
+
+# Hiển thị kết quả từ session_state (nếu có dữ liệu)
+if "search_results_data" in st.session_state:
+    results = st.session_state.search_results_data
+    total_scanned_cities = st.session_state.total_scanned_cities_count
     
     if results:
         df = pd.DataFrame(results)
@@ -420,12 +423,39 @@ if search_clicked:
         sorted_cities = city_min_prices.sort_values(ascending=True).index
         matched_cities_count = len(sorted_cities)
         
-        st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        # Tiêu đề kết quả và nút xóa dữ liệu vào kèo
+        title_col, clear_data_col = st.columns([3, 1])
+        with title_col:
+            st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        with clear_data_col:
+            if st.session_state.entered_cities:
+                if st.button("🗑️ Xóa dữ liệu vào kèo", use_container_width=True, help="Reset trạng thái tất cả thành phố về chưa vào kèo"):
+                    st.session_state.entered_cities = []
+                    st.rerun()
         
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
+            
+            # Kiểm tra thành phố đã vào kèo chưa để quyết định màu nền card
+            is_entered = city_name in st.session_state.entered_cities
+            card_class = "result-card-entered" if is_entered else "result-card"
+            
             with st.container():
-                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="{card_class}">""", unsafe_allow_html=True)
+                
+                # Header thành phố: Tên bên trái, Nút trạng thái bên phải
+                header_text_col, header_btn_col = st.columns([4, 1])
+                with header_text_col:
+                    st.markdown(f"""<div class="city-header" style="margin-bottom:0px;"><span>{city_name}</span></div>""", unsafe_allow_html=True)
+                with header_btn_col:
+                    if not is_entered:
+                        if st.button("✅ Vào Kèo", key=f"enter_{city_name}", use_container_width=True):
+                            st.session_state.entered_cities.append(city_name)
+                            st.rerun()
+                    else:
+                        if st.button("❌ Hủy Đánh Dấu", key=f"leave_{city_name}", use_container_width=True):
+                            st.session_state.entered_cities.remove(city_name)
+                            st.rerun()
                 
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
@@ -457,5 +487,5 @@ if search_clicked:
     else:
         st.markdown(f"### Search Results <span style='background:#f85149; padding:2px 10px; border-radius:10px; font-size:0.8rem'>0/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         st.warning("No markets match your criteria.")
-else:
+elif not search_clicked:
     st.info("Select cities and filters, then click 'Search Markets' to begin.")
