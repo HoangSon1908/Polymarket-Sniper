@@ -288,15 +288,23 @@ st.markdown("""
     .stApp { background-color: #0e1117; }
     header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
     .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
-    .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-    .result-card-entered { 
-        background-color: #112a1c; /* Nền xanh rêu sáng hơn rõ rệt */
-        border: 1px solid #30363d; 
-        border-left: 4px solid #3fb950; /* Viền trái cực dày màu xanh neon */
-        border-radius: 8px; 
-        padding: 15px; 
-        margin-bottom: 15px; 
-        box-shadow: 0 0 8px rgba(63, 185, 80, 0.15); /* Hiệu ứng phát sáng nhẹ */
+    /* --- CSS thay thế cho .result-card và .result-card-entered --- */
+    div[data-testid="stVerticalBlock"]:has(.marker-normal):not(:has(div[data-testid="stVerticalBlock"]:has(.marker-normal))) {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+
+    div[data-testid="stVerticalBlock"]:has(.marker-entered):not(:has(div[data-testid="stVerticalBlock"]:has(.marker-entered))) {
+        background-color: #0f1c15;
+        border: 1px solid #238636;
+        border-left: 4px solid #3fb950;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 0 8px rgba(63, 185, 80, 0.15);
     }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
@@ -443,13 +451,12 @@ if "search_results_data" in st.session_state:
         
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
-            
-            # Kiểm tra thành phố đã vào kèo chưa để quyết định màu nền card
             is_entered = city_name in st.session_state.entered_cities
-            card_class = "result-card-entered" if is_entered else "result-card"
             
             with st.container():
-                st.markdown(f"""<div class="{card_class}">""", unsafe_allow_html=True)
+                # Bơm marker ẩn để CSS nhận diện và đóng khung toàn bộ Container này
+                marker_class = "marker-entered" if is_entered else "marker-normal"
+                st.markdown(f"<span class='{marker_class}' style='display:none'></span>", unsafe_allow_html=True)
                 
                 # Header thành phố: Tên bên trái, Nút trạng thái bên phải
                 header_text_col, header_btn_col = st.columns([4, 1])
@@ -465,32 +472,35 @@ if "search_results_data" in st.session_state:
                             st.session_state.entered_cities.remove(city_name)
                             st.rerun()
                 
+                # Render danh sách sự kiện bên trong cùng container
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
-                    st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
-                    
                     row = event_markets.iloc[0]
-                    st.markdown(f"""
-                    <div class="market-row">
-                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
-                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
-                            <div style="text-align:center">
-                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
-                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
+                    
+                    event_html = f"""
+                    <div class='event-box'>
+                        <div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>
+                        <div class="market-row">
+                            <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                            <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                                <div style="text-align:center">
+                                    <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+                                    <div class="depth-text">${row['YES_Depth']:,.0f}</div>
+                                </div>
+                                <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                                <div style="text-align:center">
+                                    <div class="price-btn-no">No {row['NO']:.1f}¢</div>
+                                    <div class="depth-text">${row['NO_Depth']:,.0f}</div>
+                                </div>
                             </div>
-                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
-                            <div style="text-align:center">
-                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
-                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
+                            <div style="flex:1; text-align:right">
+                                <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
                             </div>
-                        </div>
-                        <div style="flex:1; text-align:right">
-                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
+                    """
+                    st.markdown(event_html, unsafe_allow_html=True)
+                    
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
     else:
         st.markdown(f"### Search Results <span style='background:#f85149; padding:2px 10px; border-radius:10px; font-size:0.8rem'>0/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
