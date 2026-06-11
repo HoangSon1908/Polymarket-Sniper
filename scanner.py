@@ -426,7 +426,7 @@ if st.session_state.scan_results is not None:
                         badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
                         row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
                     else:
-                        title_color = "#c9d1d9"  # Trắng (Chưa gắn cờ)
+                        title_color = "#e3b341"  # Trắng (Chưa gắn cờ)
                         badge = ""
                         row_bg = "background-color: #161b22; border: 1px solid #ffffff; border-radius: 8px; opacity: 1.0;"
                     
