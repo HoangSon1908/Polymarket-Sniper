@@ -416,30 +416,7 @@ if st.session_state.scan_results is not None:
                     is_ordered = event_title in st.session_state.ordered_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
-if st.session_state.scan_results is not None:
-    results = st.session_state.scan_results
-    total_scanned_cities = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
-    
-    if results:
-        df = pd.DataFrame(results)
-        city_min_prices = df.groupby('City')['MatchedPrice'].min()
-        sorted_cities = city_min_prices.sort_values(ascending=True).index
-        matched_cities_count = len(sorted_cities)
-        
-        st.markdown(f"### Search Results <span style='background:#1f6feb; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
-        
-        for city_name in sorted_cities:
-            city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
-            with st.container():
-                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
-                
-                for event_title in city_results['EventTitle'].unique():
-                    event_markets = city_results[city_results['EventTitle'] == event_title]
-                    
-                    is_ordered = event_title in st.session_state.ordered_markets
-                    is_checked = event_title in st.session_state.checked_markets
-                    
-                    # --- THIẾT LẬP HỆ MÀU MỚI (TỐI ƯU TRỰC QUAN, DỊU MẮT) ---
+                    # --- THIẾT LẬP HỆ MÀU MỚI (MÀU SẮC RÕ RÀNG, OPACITY LUÔN LÀ 1.0) ---
                     if is_ordered:
                         title_color = "#3fb950"  # Xanh lục
                         badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
@@ -449,11 +426,11 @@ if st.session_state.scan_results is not None:
                         badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
                         row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
                     else:
-                        title_color = "#c9d1d9"  # Xám chữ dịu mắt (Màu chữ mặc định GitHub Dark)
+                        title_color = "#ffffff"  # Trắng (Chưa gắn cờ)
                         badge = ""
-                        row_bg = "background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; opacity: 1.0;" # Viền xám tối dịu mắt
+                        row_bg = "background-color: #161b22; border: 1px solid #ffffff; border-radius: 8px; opacity: 1.0;"
                     
-                    # Layout nút bấm (Đã sửa lỗi thụt lề thẳng hàng với block if/elif/else)
+                    # Layout nút bấm
                     title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
                     with title_col:
                         st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
@@ -469,4 +446,27 @@ if st.session_state.scan_results is not None:
                     row = event_markets.iloc[0]
                     st.markdown(f"""
                     <div class="market-row" style="{row_bg}">
-                        <div style="flex:
+                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                            <div style="text-align:center">
+                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
+                            </div>
+                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                            <div style="text-align:center">
+                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
+                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
+                            </div>
+                        </div>
+                        <div style="flex:1; text-align:right">
+                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
+    else:
+        st.markdown(f"### Search Results <span style='background:#f85149; padding:2px 10px; border-radius:10px; font-size:0.8rem'>0/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        st.warning("No markets match your criteria.")
+else:
+    st.info("Select cities and filters, then click 'Search Markets' to begin.")
