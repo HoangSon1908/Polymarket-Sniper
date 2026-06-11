@@ -14,7 +14,7 @@ DEFAULT_CONCURRENCY = 20
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
     {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active"},
-    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active"},
+    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-fractisco", "marketType": "highest", "status": "active"},
     {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active"},
     {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active"},
     {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active"},
@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
     "ordered_markets": [],
-    "checked_markets": []
+    "checked_markets": []  # Thêm mảng quản lý các kèo đã check qua
 }
 
 # --- CALLBACK FUNCTIONS ---
@@ -98,6 +98,7 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.remove(event_title)
     else:
         st.session_state.ordered_markets.append(event_title)
+        # Nếu đã vào lệnh thì tự động bỏ trạng thái đã check để tránh xung đột giao diện
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
 
@@ -106,6 +107,7 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.remove(event_title)
     else:
         st.session_state.checked_markets.append(event_title)
+        # Nếu đổi sang trạng thái check/skip thì bỏ cờ vào lệnh cũ nếu có
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
 
@@ -294,7 +296,7 @@ st.markdown("""
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
-    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; transition: all 0.2s; }
+    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; }
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
@@ -416,23 +418,27 @@ if st.session_state.scan_results is not None:
                     is_ordered = event_title in st.session_state.ordered_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
-                    # --- THIẾT LẬP HỆ MÀU MỚI (MÀU SẮC RÕ RÀNG, OPACITY LUÔN LÀ 1.0) ---
+                    # Xác định màu sắc, nhãn và style CSS dựa trên 3 trạng thái
                     if is_ordered:
-                        title_color = "#3fb950"  # Xanh lục
+                        title_color = "#3fb950"
                         badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
                         row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
-                    else is_checked:
+                    elif is_checked:
                         title_color = "#e3b341"  # Vàng hổ phách
                         badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
                         row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
+                    else:
+                        title_color = "#e6edf3"
+                        badge = ""
+                        row_bg = "border-bottom: 1px solid #21262d; opacity: 1.0;"
                     
-                    # Layout nút bấm
+                    # Chia Layout: Tiêu đề (4 phần), Nút Check (1 phần), Nút Lệnh (1 phần)
                     title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
                     with title_col:
                         st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
                     
                     with check_btn_col:
-                        chk_text = "Bỏ Theo Dõi" if is_checked else "Đã Check 🟡"
+                        chk_text = "Bỏ Check" if is_checked else "Đã Check ✔"
                         st.button(chk_text, key=f"chk_{event_title}", on_click=toggle_checked_status, args=(event_title,), use_container_width=True)
                         
                     with order_btn_col:
