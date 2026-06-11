@@ -1,4 +1,3 @@
-import os
 import json
 import asyncio
 import aiohttp
@@ -11,8 +10,6 @@ from datetime import datetime, timedelta
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(SCRIPT_DIR, "user_config.json")
 
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
@@ -78,42 +75,40 @@ DEFAULT_FAVORITE_CITIES = [
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
-# --- CONFIG MANAGEMENT ---
+DEFAULT_CONFIG = {
+    "min_p_yes": 80.0,
+    "max_p_yes": 99.7,
+    "min_p_no": 98.0,
+    "max_p_no": 99.7,
+    "filter_yes": True,
+    "filter_no": True,
+    "gap_filter_enabled": True,
+    "gap_value": 3,
+    "gap_direction": "Both",
+    "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
+    "selected_cities": DEFAULT_FAVORITE_CITIES,
+    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
+    "ordered_markets": []
+}
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return {
-        "min_p_yes": 80.0,
-        "max_p_yes": 99.9,
-        "min_p_no": 98.0,
-        "max_p_no": 99.9,
-        "filter_yes": True,
-        "filter_no": True,
-        "gap_filter_enabled": True,
-        "gap_value": 3,
-        "gap_direction": "Both",
-        "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
-        "selected_cities": DEFAULT_FAVORITE_CITIES,
-        "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"]
-    }
+# --- CALLBACK FUNCTIONS ---
+def toggle_ordered_status(event_title):
+    if event_title in st.session_state.ordered_markets:
+        st.session_state.ordered_markets.remove(event_title)
+    else:
+        st.session_state.ordered_markets.append(event_title)
+    st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
 
-def save_config(config_data):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config_data, f)
+def clear_all_orders():
+    st.session_state.ordered_markets = []
+    st.session_state.current_config["ordered_markets"] = []
 
 # --- HELPER FUNCTIONS ---
-
 def parse_val(title):
     if not title: return None
     nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
     if not nums: return None
     if len(nums) >= 2:
-        # Range, take average (e.g., "70-74" -> 72)
         return (float(nums[0]) + float(nums[1])) / 2
     return float(nums[0])
 
@@ -159,11 +154,8 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 books_data = await books_resp.json()
             
             books = {b["asset_id"]: b for b in books_data}
-            
-            # Sort markets by their numerical value to handle brackets/indices correctly
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-            # If gap filter is enabled, find the index of the market with the highest YES price
             highest_idx = -1
             if gap_filter_enabled:
                 max_yes_found = -1.0
@@ -175,7 +167,6 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                     y_asks = y_book.get("asks", [])
                     if not y_asks: continue
                     y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
-                    
                     if y_p > max_yes_found:
                         max_yes_found = y_p
                         highest_idx = i
@@ -188,19 +179,15 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 
                 yes_book = books.get(yes_id, {})
                 no_book = books.get(no_id, {})
-                
                 y_asks = yes_book.get("asks", [])
                 n_asks = no_book.get("asks", [])
                 
                 yes_price = float(min(y_asks, key=lambda x: float(x["price"]))["price"]) if y_asks else 1.0
                 no_price = float(min(n_asks, key=lambda x: float(x["price"]))["price"]) if n_asks else 1.0
-                
                 y_depth = float(min(y_asks, key=lambda x: float(x["price"]))["size"]) if y_asks else 0.0
                 n_depth = float(min(n_asks, key=lambda x: float(x["price"]))["size"]) if n_asks else 0.0
                 
-                # Spread Calculation
                 spread = (yes_price + no_price) * 100 - 100
-                
                 is_match = False
                 matched_price = 100.0
                 
@@ -216,24 +203,19 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                             if sm['id'] == m['id']:
                                 current_idx = idx
                                 break
-                        
                         if current_idx != -1:
                             diff = current_idx - highest_idx
-                            
                             effective_dir = gap_direction
                             if m_type == "lowest":
                                 if gap_direction == "Up": effective_dir = "Down"
                                 elif gap_direction == "Down": effective_dir = "Up"
                             
                             if effective_dir == "Both":
-                                if abs(diff) <= gap_value:
-                                    pass_gap = False
+                                if abs(diff) <= gap_value: pass_gap = False
                             elif effective_dir == "Up":
-                                if diff <= gap_value:  
-                                    pass_gap = False
+                                if diff <= gap_value: pass_gap = False
                             elif effective_dir == "Down":
-                                if diff >= -gap_value: 
-                                    pass_gap = False
+                                if diff >= -gap_value: pass_gap = False
                     
                     if pass_gap:
                         is_match = True
@@ -259,14 +241,11 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
 
 async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
-    
-    # 1. Always exclude blacklisted cities
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
-        
-    # 2. If specific cities are selected, use only those
     if selected_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
+        
     dates = get_target_dates(selected_dates)
     matches_list = []
     semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
@@ -283,7 +262,17 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
-config = load_config()
+
+# KHỞI TẠO PURE SESSION STATE (Không kết nối DB ngoài)
+if "config_loaded" not in st.session_state:
+    st.session_state.current_config = DEFAULT_CONFIG.copy()
+    st.session_state.selected_cities = st.session_state.current_config["selected_cities"]
+    st.session_state.excluded_cities = st.session_state.current_config["excluded_cities"]
+    st.session_state.ordered_markets = st.session_state.current_config["ordered_markets"]
+    st.session_state.scan_results = None
+    st.session_state.config_loaded = True
+
+config = st.session_state.current_config
 
 st.markdown("""
 <div id="top"></div>
@@ -295,8 +284,7 @@ st.markdown("""
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
-    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
-    .market-row:last-child { border-bottom: none; }
+    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; }
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
@@ -311,21 +299,13 @@ with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
     all_city_names = sorted([c["name"] for c in CITIES_DATA])
     
-    # Initialize session states
-    if "selected_cities" not in st.session_state:
-        st.session_state.selected_cities = config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
-    if "excluded_cities" not in st.session_state:
-        st.session_state.excluded_cities = config.get("excluded_cities", [])
-
     st.session_state.selected_cities = [c for c in st.session_state.selected_cities if c not in st.session_state.excluded_cities]
 
-    # --- Blacklist Multiselect ---
     exclude_options = [c for c in all_city_names if c not in st.session_state.selected_cities]
     excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
     st.session_state.excluded_cities = excluded_cities
     
-    # --- Preset Buttons ---
-    preset_col1, preset_col2, preset_col3 = st.columns([1.5, 1.5, 1])
+    preset_col1, preset_col2, preset_col3, preset_col4 = st.columns([1.5, 1.5, 1, 1.5])
     with preset_col1:
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
@@ -339,20 +319,19 @@ with st.container():
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.rerun()
+    with preset_col4:
+        st.button("🧹 Xóa toàn bộ cờ lệnh", use_container_width=True, on_click=clear_all_orders)
     
-    # --- Selection Multiselect ---
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
     
     c1, c2 = st.columns([1, 1])
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
-    if isinstance(saved_dates, str): saved_dates = ["Today", "Tomorrow", "Day After Tomorrow"]
     
     with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
     with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
-    # YES Filter
     y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
     with y_head_col:
         st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
@@ -364,7 +343,6 @@ with st.container():
         st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
         max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
-    # NO Filter
     n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.5, 1.5, 1.0])
     with n_head_col:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
@@ -388,7 +366,7 @@ with st.container():
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
-    with col_msg: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:10px'>Settings are saved automatically when you search.</p>", unsafe_allow_html=True)
+    with col_msg: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:10px'>Settings apply to the current active session.</p>", unsafe_allow_html=True)
     with col_btn: search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -405,13 +383,16 @@ if search_clicked:
         "gap_direction": gap_direction,
         "selected_dates": selected_dates, 
         "selected_cities": selected_cities,
-        "excluded_cities": excluded_cities
+        "excluded_cities": excluded_cities,
+        "ordered_markets": st.session_state.ordered_markets
     }
-    save_config(current_config)
+    st.session_state.current_config = current_config
 
     with st.spinner("Finding markets..."):
-        results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
-    
+        st.session_state.scan_results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
+
+if st.session_state.scan_results is not None:
+    results = st.session_state.scan_results
     total_scanned_cities = len(selected_cities) if selected_cities else len([c for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities])
     
     if results:
@@ -429,11 +410,23 @@ if search_clicked:
                 
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
-                    st.markdown(f"<div class='event-box'><div style='color:#8b949e; font-size:0.9rem; margin-bottom:10px'>{event_title}</div>", unsafe_allow_html=True)
+                    
+                    is_ordered = event_title in st.session_state.ordered_markets
+                    
+                    title_col, btn_col = st.columns([5, 1])
+                    with title_col:
+                        title_color = "#3fb950" if is_ordered else "#8b949e"
+                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;'>✅ ĐÃ VÀO LỆNH</span>" if is_ordered else ""
+                        st.markdown(f"<div style='color:{title_color}; font-size:0.9rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
+                    with btn_col:
+                        btn_text = "Hủy cờ lệnh" if is_ordered else "Vào lệnh"
+                        st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     row = event_markets.iloc[0]
+                    row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px;" if is_ordered else "border-bottom: 1px solid #21262d;"
+                    
                     st.markdown(f"""
-                    <div class="market-row">
+                    <div class="market-row" style="{row_bg}">
                         <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
                             <div style="text-align:center">
@@ -451,7 +444,6 @@ if search_clicked:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
     else:
