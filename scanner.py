@@ -12,57 +12,57 @@ CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
 
 CITIES_DATA = [
-    {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active", "lat": 47.6062, "lon": -122.3321, "unit": "F"},
-    {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active", "lat": 34.0522, "lon": -118.2437, "unit": "F"},
-    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-fractisco", "marketType": "highest", "status": "active", "lat": 37.7749, "lon": -122.4194, "unit": "F"},
-    {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active", "lat": 39.7392, "lon": -104.9903, "unit": "F"},
-    {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active", "lat": 41.8781, "lon": -87.6298, "unit": "F"},
-    {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active", "lat": 32.7767, "lon": -96.7970, "unit": "F"},
-    {"key": "austin", "name": "Austin", "polymarketCity": "austin", "marketType": "highest", "status": "active", "lat": 30.2672, "lon": -97.7431, "unit": "F"},
-    {"key": "houston", "name": "Houston", "polymarketCity": "houston", "marketType": "highest", "status": "active", "lat": 29.7604, "lon": -95.3698, "unit": "F"},
-    {"key": "mexicocity", "name": "Mexico City", "polymarketCity": "mexico-city", "marketType": "highest", "status": "active", "lat": 19.4326, "lon": -99.1332, "unit": "C"},
-    {"key": "panamacity", "name": "Panama City", "polymarketCity": "panama-city", "marketType": "highest", "status": "active", "lat": 8.9824, "lon": -79.5199, "unit": "C"},
-    {"key": "miami", "name": "Miami", "polymarketCity": "miami", "marketType": ["highest", "lowest"], "status": "active", "lat": 25.7617, "lon": -80.1918, "unit": "F"},
-    {"key": "atlanta", "name": "Atlanta", "polymarketCity": "atlanta", "marketType": "highest", "status": "active", "lat": 33.7490, "lon": -84.3880, "unit": "F"},
-    {"key": "nyc", "name": "New York", "polymarketCity": "nyc", "marketType": ["highest", "lowest"], "status": "active", "lat": 40.7128, "lon": -74.0060, "unit": "F"},
-    {"key": "toronto", "name": "Toronto", "polymarketCity": "toronto", "marketType": "highest", "status": "active", "lat": 43.6532, "lon": -79.3832, "unit": "C"},
-    {"key": "buenosaires", "name": "Buenos Aires", "polymarketCity": "buenos-aires", "marketType": "highest", "status": "active", "lat": -34.6037, "lon": -58.3816, "unit": "C"},
-    {"key": "saopaulo", "name": "São Paulo", "polymarketCity": "sao-paulo", "marketType": "highest", "status": "active", "lat": -23.5505, "lon": -46.6333, "unit": "C"},
-    {"key": "london", "name": "London", "polymarketCity": "london", "marketType": ["highest", "lowest"], "status": "active", "lat": 51.5074, "lon": -0.1278, "unit": "C"},
-    {"key": "lagos", "name": "Lagos", "polymarketCity": "lagos", "marketType": "highest", "status": "active", "lat": 6.5244, "lon": 3.3792, "unit": "C"},
-    {"key": "amsterdam", "name": "Amsterdam", "polymarketCity": "amsterdam", "marketType": "highest", "status": "active", "lat": 52.3676, "lon": 4.9041, "unit": "C"},
-    {"key": "paris", "name": "Paris", "polymarketCity": "paris", "marketType": ["highest", "lowest"], "status": "active", "lat": 48.8566, "lon": 2.3522, "unit": "C"},
-    {"key": "munich", "name": "Munich", "polymarketCity": "munich", "marketType": "highest", "status": "active", "lat": 48.1351, "lon": 11.5820, "unit": "C"},
-    {"key": "milan", "name": "Milan", "polymarketCity": "milan", "marketType": "highest", "status": "active", "lat": 45.4642, "lon": 9.1900, "unit": "C"},
-    {"key": "madrid", "name": "Madrid", "polymarketCity": "madrid", "marketType": "highest", "status": "active", "lat": 40.4168, "lon": -3.7038, "unit": "C"},
-    {"key": "warsaw", "name": "Warsaw", "polymarketCity": "warsaw", "marketType": "highest", "status": "active", "lat": 52.2297, "lon": 21.0122, "unit": "C"},
-    {"key": "helsinki", "name": "Helsinki", "polymarketCity": "helsinki", "marketType": "highest", "status": "active", "lat": 60.1699, "lon": 24.9384, "unit": "C"},
-    {"key": "capetown", "name": "Cape Town", "polymarketCity": "cape-town", "marketType": "highest", "status": "active", "lat": -33.9249, "lon": 18.4241, "unit": "C"},
-    {"key": "telaviv", "name": "Tel Aviv", "polymarketCity": "tel-aviv", "marketType": "highest", "status": "active", "lat": 32.0853, "lon": 34.7818, "unit": "C"},
-    {"key": "moscow", "name": "Moscow", "polymarketCity": "moscow", "marketType": "highest", "status": "active", "lat": 55.7558, "lon": 37.6173, "unit": "C"},
-    {"key": "istanbul", "name": "Istanbul", "polymarketCity": "istanbul", "marketType": "highest", "status": "active", "lat": 41.0082, "lon": 28.9784, "unit": "C"},
-    {"key": "ankara", "name": "Ankara", "polymarketCity": "ankara", "marketType": "highest", "status": "active", "lat": 39.9334, "lon": 32.8597, "unit": "C"},
-    {"key": "jeddah", "name": "Jeddah", "polymarketCity": "jeddah", "marketType": "highest", "status": "active", "lat": 21.5433, "lon": 39.1728, "unit": "C"},
-    {"key": "karachi", "name": "Karachi", "polymarketCity": "karachi", "marketType": "highest", "status": "active", "lat": 24.8607, "lon": 67.0011, "unit": "C"},
-    {"key": "lucknow", "name": "Lucknow", "polymarketCity": "lucknow", "marketType": "highest", "status": "active", "lat": 26.8467, "lon": 80.9462, "unit": "C"},
-    {"key": "kualalumpur", "name": "Kuala Lumpur", "polymarketCity": "kuala-lumpur", "marketType": "highest", "status": "active", "lat": 3.1390, "lon": 101.6869, "unit": "C"},
-    {"key": "jakarta", "name": "Jakarta", "polymarketCity": "jakarta", "marketType": "highest", "status": "active", "lat": -6.2088, "lon": 106.8456, "unit": "C"},
-    {"key": "singapore", "name": "Singapore", "polymarketCity": "singapore", "marketType": "highest", "status": "active", "lat": 1.3521, "lon": 103.8198, "unit": "C"},
-    {"key": "hongkong", "name": "Hong Kong", "polymarketCity": "hong-kong", "marketType": ["highest", "lowest"], "status": "active", "lat": 22.3193, "lon": 114.1694, "unit": "C"},
-    {"key": "beijing", "name": "Beijing", "polymarketCity": "beijing", "marketType": "highest", "status": "active", "lat": 39.9042, "lon": 116.4074, "unit": "C"},
-    {"key": "chengdu", "name": "Chengdu", "polymarketCity": "chengdu", "marketType": "highest", "status": "active", "lat": 30.5728, "lon": 104.0668, "unit": "C"},
-    {"key": "chongqing", "name": "Chongqing", "polymarketCity": "chongqing", "marketType": "highest", "status": "active", "lat": 29.5630, "lon": 106.5516, "unit": "C"},
-    {"key": "shanghai", "name": "Shanghai", "polymarketCity": "shanghai", "marketType": ["highest", "lowest"], "status": "active", "lat": 31.2304, "lon": 121.4737, "unit": "C"},
-    {"key": "shenzhen", "name": "Shenzhen", "polymarketCity": "shenzhen", "marketType": "highest", "status": "active", "lat": 22.5431, "lon": 114.0579, "unit": "C"},
-    {"key": "taipei", "name": "Taipei", "polymarketCity": "taipei", "marketType": "highest", "status": "active", "lat": 25.0330, "lon": 121.5654, "unit": "C"},
-    {"key": "qingdao", "name": "Qingdao", "polymarketCity": "qingdao", "marketType": "highest", "status": "active", "lat": 36.0671, "lon": 120.3826, "unit": "C"},
-    {"key": "wuhan", "name": "Wuhan", "polymarketCity": "wuhan", "marketType": "highest", "status": "active", "lat": 30.5928, "lon": 114.3055, "unit": "C"},
-    {"key": "guangzhou", "name": "Guangzhou", "polymarketCity": "guangzhou", "marketType": "highest", "status": "active", "lat": 23.1291, "lon": 113.2644, "unit": "C"},
-    {"key": "manila", "name": "Manila", "polymarketCity": "manila", "marketType": "highest", "status": "active", "lat": 14.5995, "lon": 120.9842, "unit": "C"},
-    {"key": "seoul", "name": "Seoul", "polymarketCity": "seoul", "marketType": ["highest", "lowest"], "status": "active", "lat": 37.5665, "lon": 126.9780, "unit": "C"},
-    {"key": "busan", "name": "Busan", "polymarketCity": "busan", "marketType": "highest", "status": "active", "lat": 35.1796, "lon": 129.0756, "unit": "C"},
-    {"key": "tokyo", "name": "Tokyo", "polymarketCity": "tokyo", "marketType": ["highest", "lowest"], "status": "active", "lat": 35.6762, "lon": 139.6503, "unit": "C"},
-    {"key": "wellington", "name": "Wellington", "polymarketCity": "wellington", "marketType": "highest", "status": "active", "lat": -41.2865, "lon": 174.7762, "unit": "C"}
+    {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
+    {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active"},
+    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-fractisco", "marketType": "highest", "status": "active"},
+    {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active"},
+    {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active"},
+    {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active"},
+    {"key": "austin", "name": "Austin", "polymarketCity": "austin", "marketType": "highest", "status": "active"},
+    {"key": "houston", "name": "Houston", "polymarketCity": "houston", "marketType": "highest", "status": "active"},
+    {"key": "mexicocity", "name": "Mexico City", "polymarketCity": "mexico-city", "marketType": "highest", "status": "active"},
+    {"key": "panamacity", "name": "Panama City", "polymarketCity": "panama-city", "marketType": "highest", "status": "active"},
+    {"key": "miami", "name": "Miami", "polymarketCity": "miami", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "atlanta", "name": "Atlanta", "polymarketCity": "atlanta", "marketType": "highest", "status": "active"},
+    {"key": "nyc", "name": "New York", "polymarketCity": "nyc", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "toronto", "name": "Toronto", "polymarketCity": "toronto", "marketType": "highest", "status": "active"},
+    {"key": "buenosaires", "name": "Buenos Aires", "polymarketCity": "buenos-aires", "marketType": "highest", "status": "active"},
+    {"key": "saopaulo", "name": "São Paulo", "polymarketCity": "sao-paulo", "marketType": "highest", "status": "active"},
+    {"key": "london", "name": "London", "polymarketCity": "london", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "lagos", "name": "Lagos", "polymarketCity": "lagos", "marketType": "highest", "status": "active"},
+    {"key": "amsterdam", "name": "Amsterdam", "polymarketCity": "amsterdam", "marketType": "highest", "status": "active"},
+    {"key": "paris", "name": "Paris", "polymarketCity": "paris", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "munich", "name": "Munich", "polymarketCity": "munich", "marketType": "highest", "status": "active"},
+    {"key": "milan", "name": "Milan", "polymarketCity": "milan", "marketType": "highest", "status": "active"},
+    {"key": "madrid", "name": "Madrid", "polymarketCity": "madrid", "marketType": "highest", "status": "active"},
+    {"key": "warsaw", "name": "Warsaw", "polymarketCity": "warsaw", "marketType": "highest", "status": "active"},
+    {"key": "helsinki", "name": "Helsinki", "polymarketCity": "helsinki", "marketType": "highest", "status": "active"},
+    {"key": "capetown", "name": "Cape Town", "polymarketCity": "cape-town", "marketType": "highest", "status": "active"},
+    {"key": "telaviv", "name": "Tel Aviv", "polymarketCity": "tel-aviv", "marketType": "highest", "status": "active"},
+    {"key": "moscow", "name": "Moscow", "polymarketCity": "moscow", "marketType": "highest", "status": "active"},
+    {"key": "istanbul", "name": "Istanbul", "polymarketCity": "istanbul", "marketType": "highest", "status": "active"},
+    {"key": "ankara", "name": "Ankara", "polymarketCity": "ankara", "marketType": "highest", "status": "active"},
+    {"key": "jeddah", "name": "Jeddah", "polymarketCity": "jeddah", "marketType": "highest", "status": "active"},
+    {"key": "karachi", "name": "Karachi", "polymarketCity": "karachi", "marketType": "highest", "status": "active"},
+    {"key": "lucknow", "name": "Lucknow", "polymarketCity": "lucknow", "marketType": "highest", "status": "active"},
+    {"key": "kualalumpur", "name": "Kuala Lumpur", "polymarketCity": "kuala-lumpur", "marketType": "highest", "status": "active"},
+    {"key": "jakarta", "name": "Jakarta", "polymarketCity": "jakarta", "marketType": "highest", "status": "active"},
+    {"key": "singapore", "name": "Singapore", "polymarketCity": "singapore", "marketType": "highest", "status": "active"},
+    {"key": "hongkong", "name": "Hong Kong", "polymarketCity": "hong-kong", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "beijing", "name": "Beijing", "polymarketCity": "beijing", "marketType": "highest", "status": "active"},
+    {"key": "chengdu", "name": "Chengdu", "polymarketCity": "chengdu", "marketType": "highest", "status": "active"},
+    {"key": "chongqing", "name": "Chongqing", "polymarketCity": "chongqing", "marketType": "highest", "status": "active"},
+    {"key": "shanghai", "name": "Shanghai", "polymarketCity": "shanghai", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "shenzhen", "name": "Shenzhen", "polymarketCity": "shenzhen", "marketType": "highest", "status": "active"},
+    {"key": "taipei", "name": "Taipei", "polymarketCity": "taipei", "marketType": "highest", "status": "active"},
+    {"key": "qingdao", "name": "Qingdao", "polymarketCity": "qingdao", "marketType": "highest", "status": "active"},
+    {"key": "wuhan", "name": "Wuhan", "polymarketCity": "wuhan", "marketType": "highest", "status": "active"},
+    {"key": "guangzhou", "name": "Guangzhou", "polymarketCity": "guangzhou", "marketType": "highest", "status": "active"},
+    {"key": "manila", "name": "Manila", "polymarketCity": "manila", "marketType": "highest", "status": "active"},
+    {"key": "seoul", "name": "Seoul", "polymarketCity": "seoul", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "busan", "name": "Busan", "polymarketCity": "busan", "marketType": "highest", "status": "active"},
+    {"key": "tokyo", "name": "Tokyo", "polymarketCity": "tokyo", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "wellington", "name": "Wellington", "polymarketCity": "wellington", "marketType": "highest", "status": "active"}
 ]
 
 DEFAULT_FAVORITE_CITIES = [
@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
     "ordered_markets": [],
-    "checked_markets": []
+    "checked_markets": []  # Thêm mảng quản lý các kèo đã check qua
 }
 
 # --- CALLBACK FUNCTIONS ---
@@ -98,6 +98,7 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.remove(event_title)
     else:
         st.session_state.ordered_markets.append(event_title)
+        # Nếu đã vào lệnh thì tự động bỏ trạng thái đã check để tránh xung đột giao diện
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
 
@@ -106,6 +107,7 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.remove(event_title)
     else:
         st.session_state.checked_markets.append(event_title)
+        # Nếu đổi sang trạng thái check/skip thì bỏ cờ vào lệnh cũ nếu có
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
 
@@ -133,42 +135,11 @@ def get_target_dates(selected_date_labels):
             d = now + timedelta(days=label_map[label])
             dates.append({
                 "slug": f"{MONTH_NAMES[d.month-1]}-{d.day}-{d.year}",
-                "display": d.strftime("%d/%m/%Y"),
-                "iso": d.strftime("%Y-%m-%d")
+                "display": d.strftime("%d/%m/%Y")
             })
     return dates
 
-async def fetch_weather_forecasts(session, cities, start_date, end_date):
-    """Lấy đồng thời dữ liệu dự báo thời tiết của tất cả các thành phố từ Open-Meteo"""
-    weather_data = {}
-    async def fetch_city(city):
-        lat, lon = city.get("lat"), city.get("lon")
-        if not lat or not lon: return
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min&timezone=auto&start_date={start_date}&end_date={end_date}"
-        try:
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    daily = data.get("daily", {})
-                    times = daily.get("time", [])
-                    max_temps = daily.get("temperature_2m_max", [])
-                    min_temps = daily.get("temperature_2m_min", [])
-                    
-                    city_forecast = {}
-                    for i, t_str in enumerate(times):
-                        city_forecast[t_str] = {
-                            "highest": max_temps[i] if i < len(max_temps) else None,
-                            "lowest": min_temps[i] if i < len(min_temps) else None
-                        }
-                    weather_data[city["key"]] = city_forecast
-        except Exception:
-            pass
-
-    tasks = [fetch_city(c) for c in cities]
-    await asyncio.gather(*tasks)
-    return weather_data
-
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list, forecast_temp):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -197,18 +168,21 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
             books = {b["asset_id"]: b for b in books_data}
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-            # --- NEW GAP FILTER LOGIC BY OPEN-METEO ---
-            forecast_idx = -1
-            if gap_filter_enabled and forecast_temp is not None:
-                closest_diff = float('inf')
+            highest_idx = -1
+            if gap_filter_enabled:
+                max_yes_found = -1.0
                 for i, m in enumerate(sorted_markets):
-                    m_val = parse_val(m.get("groupItemTitle") or m.get("question"))
-                    if m_val is not None:
-                        diff = abs(m_val - forecast_temp)
-                        if diff < closest_diff:
-                            closest_diff = diff
-                            forecast_idx = i
-
+                    tokens = json.loads(m.get("clobTokenIds", "[]"))
+                    if len(tokens) < 2: continue
+                    y_id = tokens[0]
+                    y_book = books.get(y_id, {})
+                    y_asks = y_book.get("asks", [])
+                    if not y_asks: continue
+                    y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
+                    if y_p > max_yes_found:
+                        max_yes_found = y_p
+                        highest_idx = i
+            
             for yes_id, info in market_map.items():
                 if info["side"] != "YES": continue
                 m = info["m"]
@@ -235,14 +209,14 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 
                 if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
                     pass_gap = True
-                    if gap_filter_enabled and forecast_idx != -1:
+                    if gap_filter_enabled and highest_idx != -1:
                         current_idx = -1
                         for idx, sm in enumerate(sorted_markets):
                             if sm['id'] == m['id']:
                                 current_idx = idx
                                 break
                         if current_idx != -1:
-                            diff = current_idx - forecast_idx
+                            diff = current_idx - highest_idx
                             effective_dir = gap_direction
                             if m_type == "lowest":
                                 if gap_direction == "Up": effective_dir = "Down"
@@ -272,8 +246,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                         "Spread": spread,
                         "MatchedPrice": matched_price,
                         "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
-                        "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?",
-                        "Forecast": f"{forecast_temp:.1f}°{city['unit']}" if forecast_temp is not None else "N/A"
+                        "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
                     })
         except Exception:
             pass
@@ -288,34 +261,14 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
     dates = get_target_dates(selected_dates)
     matches_list = []
     semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
-    
     async with aiohttp.ClientSession() as session:
-        # Bước 1: Lấy dự báo thời tiết trước cho toàn bộ ngày cần quét
-        start_date = min([d["iso"] for d in dates]) if dates else None
-        end_date = max([d["iso"] for d in dates]) if dates else None
-        
-        weather_forecasts = {}
-        if start_date and end_date:
-            weather_forecasts = await fetch_weather_forecasts(session, cities_to_scan, start_date, end_date)
-            
         tasks = []
         for city in cities_to_scan:
             m_types = city.get("marketType")
             if not isinstance(m_types, list): m_types = [m_types]
             for d in dates:
-                city_weather = weather_forecasts.get(city["key"], {}).get(d["iso"], {})
                 for mt in m_types:
-                    forecast_temp = city_weather.get(mt)
-                    # Chuyển đổi sang Fahrenheit nếu thành phố sử dụng đơn vị F
-                    if forecast_temp is not None and city.get("unit") == "F":
-                        forecast_temp = forecast_temp * 1.8 + 32
-                        
-                    tasks.append(check_event(
-                        session, semaphore, city, d, mt, 
-                        min_p_yes, max_p_yes, min_p_no, max_p_no, 
-                        filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, 
-                        matches_list, forecast_temp
-                    ))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list))
         await asyncio.gather(*tasks)
     return matches_list
 
@@ -389,7 +342,7 @@ with st.container():
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
     
     with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
-    with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest) and matched against Open-Meteo forecasts.</p>", unsafe_allow_html=True)
+    with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
     y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
     with y_head_col:
@@ -413,7 +366,7 @@ with st.container():
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
         max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_gap_col:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER (METEO)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
         gc1, gc2, gc3 = st.columns([0.5, 1, 1.5])
         with gc1:
             gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap")
@@ -421,7 +374,7 @@ with st.container():
             gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
         with gc3:
             gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed")
-        st.markdown(f"<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction} from Forecast)</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -439,7 +392,7 @@ if search_clicked:
     }
     st.session_state.current_config = current_config
 
-    with st.spinner("Finding markets & fetching Open-Meteo data..."):
+    with st.spinner("Finding markets..."):
         st.session_state.scan_results = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
 
 if st.session_state.scan_results is not None:
@@ -465,12 +418,13 @@ if st.session_state.scan_results is not None:
                     is_ordered = event_title in st.session_state.ordered_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
+                    # Xác định màu sắc, nhãn và style CSS dựa trên 3 trạng thái
                     if is_ordered:
                         title_color = "#3fb950"
                         badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
                         row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
                     elif is_checked:
-                        title_color = "#e3b341"
+                        title_color = "#e3b341"  # Vàng hổ phách
                         badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
                         row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
                     else:
@@ -478,12 +432,10 @@ if st.session_state.scan_results is not None:
                         badge = ""
                         row_bg = "border-bottom: 1px solid #21262d; opacity: 1.0;"
                     
-                    row = event_markets.iloc[0]
-                    forecast_str = row.get("Forecast", "N/A")
-                    
+                    # Chia Layout: Tiêu đề (4 phần), Nút Check (1 phần), Nút Lệnh (1 phần)
                     title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
                     with title_col:
-                        st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title} <span style='color: #58a6ff; font-weight: normal; margin-left: 10px;'>Forecast: {forecast_str}</span>{badge}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
                     
                     with check_btn_col:
                         chk_text = "Bỏ Check" if is_checked else "Đã Check ✔"
@@ -493,6 +445,7 @@ if st.session_state.scan_results is not None:
                         btn_text = "Hủy cờ lệnh" if is_ordered else "Vào lệnh 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
+                    row = event_markets.iloc[0]
                     st.markdown(f"""
                     <div class="market-row" style="{row_bg}">
                         <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
