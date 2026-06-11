@@ -416,19 +416,19 @@ if st.session_state.scan_results is not None:
                     is_ordered = event_title in st.session_state.ordered_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
-                    # --- THIẾT LẬP HỆ MÀU MỚI (MÀU SẮC RÕ RÀNG, OPACITY LUÔN LÀ 1.0) ---
-                    if is_ordered:
-                        title_color = "#3fb950"  # Xanh lục
-                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
-                        row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
-                    elif is_checked:
-                        title_color = "#e3b341"  # Vàng hổ phách
-                        badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
-                        row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
-                    else:
-                        title_color = "#ffffff"  # Trắng (Chưa gắn cờ)
-                        badge = ""
-                        row_bg = "background-color: #161b22; border: 1px solid #ffffff; border-radius: 8px; opacity: 1.0;"
+    # --- THIẾT LẬP HỆ MÀU MỚI (TỐI ƯU TRỰC QUAN, DỊU MẮT) ---
+    if is_ordered:
+        title_color = "#3fb950"  # Xanh lục
+        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
+        row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
+    elif is_checked:
+        title_color = "#e3b341"  # Vàng hổ phách
+        badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
+        row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
+    else:
+        title_color = "#c9d1d9"  # Xám chữ dịu mắt (Màu chữ mặc định GitHub Dark)
+        badge = ""
+        row_bg = "background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; opacity: 1.0;" # Viền xám tối tiệp với màu card
                     
                     # Layout nút bấm
                     title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
