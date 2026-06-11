@@ -88,7 +88,8 @@ DEFAULT_CONFIG = {
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
-    "ordered_markets": []
+    "ordered_markets": [],
+    "checked_markets": []
 }
 
 # --- CALLBACK FUNCTIONS ---
@@ -97,11 +98,20 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.remove(event_title)
     else:
         st.session_state.ordered_markets.append(event_title)
-    st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+        if event_title in st.session_state.checked_markets:
+            st.session_state.checked_markets.remove(event_title)
 
-def clear_all_orders():
+def toggle_checked_status(event_title):
+    if event_title in st.session_state.checked_markets:
+        st.session_state.checked_markets.remove(event_title)
+    else:
+        st.session_state.checked_markets.append(event_title)
+        if event_title in st.session_state.ordered_markets:
+            st.session_state.ordered_markets.remove(event_title)
+
+def clear_all_flags():
     st.session_state.ordered_markets = []
-    st.session_state.current_config["ordered_markets"] = []
+    st.session_state.checked_markets = []
 
 # --- HELPER FUNCTIONS ---
 def parse_val(title):
@@ -263,12 +273,12 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# KHỞI TẠO PURE SESSION STATE (Không kết nối DB ngoài)
 if "config_loaded" not in st.session_state:
     st.session_state.current_config = DEFAULT_CONFIG.copy()
     st.session_state.selected_cities = st.session_state.current_config["selected_cities"]
     st.session_state.excluded_cities = st.session_state.current_config["excluded_cities"]
     st.session_state.ordered_markets = st.session_state.current_config["ordered_markets"]
+    st.session_state.checked_markets = st.session_state.current_config["checked_markets"]
     st.session_state.scan_results = None
     st.session_state.config_loaded = True
 
@@ -284,7 +294,7 @@ st.markdown("""
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
-    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; }
+    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; transition: all 0.2s; }
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
@@ -320,7 +330,7 @@ with st.container():
             st.session_state.selected_cities = []
             st.rerun()
     with preset_col4:
-        st.button("🧹 Xóa toàn bộ cờ lệnh", use_container_width=True, on_click=clear_all_orders)
+        st.button("🧹 Reset Bộ Nhớ (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Xóa sạch cờ đã vào lệnh và cờ đã check để làm chu kỳ mới")
     
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
@@ -372,19 +382,11 @@ with st.container():
 
 if search_clicked:
     current_config = {
-        "min_p_yes": min_p_yes, 
-        "max_p_yes": max_p_yes, 
-        "min_p_no": min_p_no, 
-        "max_p_no": max_p_no, 
-        "filter_yes": filter_yes,
-        "filter_no": filter_no,
-        "gap_filter_enabled": gap_filter_enabled,
-        "gap_value": gap_value,
-        "gap_direction": gap_direction,
-        "selected_dates": selected_dates, 
-        "selected_cities": selected_cities,
-        "excluded_cities": excluded_cities,
-        "ordered_markets": st.session_state.ordered_markets
+        "min_p_yes": min_p_yes, "max_p_yes": max_p_yes, "min_p_no": min_p_no, "max_p_no": max_p_no, 
+        "filter_yes": filter_yes, "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
+        "gap_value": gap_value, "gap_direction": gap_direction, "selected_dates": selected_dates, 
+        "selected_cities": selected_cities, "excluded_cities": excluded_cities,
+        "ordered_markets": st.session_state.ordered_markets, "checked_markets": st.session_state.checked_markets
     }
     st.session_state.current_config = current_config
 
@@ -412,19 +414,36 @@ if st.session_state.scan_results is not None:
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     
                     is_ordered = event_title in st.session_state.ordered_markets
+                    is_checked = event_title in st.session_state.checked_markets
                     
-                    title_col, btn_col = st.columns([5, 1])
+                    # --- THIẾT LẬP HỆ MÀU MỚI (MÀU SẮC RÕ RÀNG, OPACITY LUÔN LÀ 1.0) ---
+                    if is_ordered:
+                        title_color = "#3fb950"  # Xanh lục
+                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
+                        row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
+                    elif is_checked:
+                        title_color = "#e3b341"  # Vàng hổ phách
+                        badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
+                        row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
+                    else:
+                        title_color = "#ffffff"  # Trắng (Chưa gắn cờ)
+                        badge = ""
+                        row_bg = "background-color: #161b22; border: 1px solid #ffffff; border-radius: 8px; opacity: 1.0;"
+                    
+                    # Layout nút bấm
+                    title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
                     with title_col:
-                        title_color = "#3fb950" if is_ordered else "#8b949e"
-                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;'>✅ ĐÃ VÀO LỆNH</span>" if is_ordered else ""
-                        st.markdown(f"<div style='color:{title_color}; font-size:0.9rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
-                    with btn_col:
-                        btn_text = "Hủy cờ lệnh" if is_ordered else "Vào lệnh"
+                        st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
+                    
+                    with check_btn_col:
+                        chk_text = "Bỏ Theo Dõi" if is_checked else "Đã Check 🟡"
+                        st.button(chk_text, key=f"chk_{event_title}", on_click=toggle_checked_status, args=(event_title,), use_container_width=True)
+                        
+                    with order_btn_col:
+                        btn_text = "Hủy cờ lệnh" if is_ordered else "Vào lệnh 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     row = event_markets.iloc[0]
-                    row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px;" if is_ordered else "border-bottom: 1px solid #21262d;"
-                    
                     st.markdown(f"""
                     <div class="market-row" style="{row_bg}">
                         <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
