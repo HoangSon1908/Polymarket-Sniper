@@ -70,7 +70,7 @@ DEFAULT_FAVORITE_CITIES = [
     "Chongqing", "Beijing", "Kuala Lumpur", "Taipei", "Qingdao", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
-    "London", "Ankara", "Helsinki", "Istanbul", "Moscow"
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
