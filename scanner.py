@@ -83,7 +83,7 @@ DEFAULT_CONFIG = {
     "filter_yes": False,
     "filter_no": True,
     "gap_filter_enabled": True,
-    "gap_value": 3,
+    "gap_value": 4,
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
