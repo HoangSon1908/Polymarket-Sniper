@@ -4,12 +4,14 @@ import aiohttp
 import streamlit as st
 import pandas as pd
 import re
+import os
 from datetime import datetime, timedelta
 
 # --- CONSTANTS ---
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
+STORAGE_FILE = "storage_config.json"  # File lưu trữ dữ liệu trên Server
 
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
@@ -92,6 +94,34 @@ DEFAULT_CONFIG = {
     "checked_markets": []
 }
 
+# --- JSON PERSISTENCE HELPERS ---
+def load_stored_data():
+    """Đọc dữ liệu từ file JSON trên server nếu có, không thì trả về cấu hình mặc định"""
+    if os.path.exists(STORAGE_FILE):
+        try:
+            with open(STORAGE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "config": DEFAULT_CONFIG.copy(),
+        "ordered_markets": [],
+        "checked_markets": []
+    }
+
+def save_stored_data():
+    """Ghi trực tiếp trạng thái hiện tại từ session_state xuống file JSON trên server"""
+    data_to_save = {
+        "config": st.session_state.current_config,
+        "ordered_markets": st.session_state.ordered_markets,
+        "checked_markets": st.session_state.checked_markets
+    }
+    try:
+        with open(STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        st.error(f"Lỗi ghi file cấu hình: {e}")
+
 # --- CALLBACK FUNCTIONS ---
 def toggle_ordered_status(event_title):
     if event_title in st.session_state.ordered_markets:
@@ -100,6 +130,7 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.append(event_title)
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
+    save_stored_data()  # Lưu lại ngay lập tức
 
 def toggle_checked_status(event_title):
     if event_title in st.session_state.checked_markets:
@@ -108,10 +139,12 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.append(event_title)
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
+    save_stored_data()  # Lưu lại ngay lập tức
 
 def clear_all_flags():
     st.session_state.ordered_markets = []
     st.session_state.checked_markets = []
+    save_stored_data()  # Lưu lại ngay lập tức
 
 # --- HELPER FUNCTIONS ---
 def parse_val(title):
@@ -282,12 +315,14 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
+# Khởi tạo trạng thái ban đầu dựa vào file cứng JSON trên server thay vì chỉ dùng default cứng
 if "config_loaded" not in st.session_state:
-    st.session_state.current_config = DEFAULT_CONFIG.copy()
-    st.session_state.selected_cities = st.session_state.current_config["selected_cities"]
-    st.session_state.excluded_cities = st.session_state.current_config["excluded_cities"]
-    st.session_state.ordered_markets = st.session_state.current_config["ordered_markets"]
-    st.session_state.checked_markets = st.session_state.current_config["checked_markets"]
+    stored_data = load_stored_data()
+    st.session_state.current_config = stored_data["config"]
+    st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
+    st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
+    st.session_state.ordered_markets = stored_data["ordered_markets"]
+    st.session_state.checked_markets = stored_data["checked_markets"]
     st.session_state.scan_results = None
     st.session_state.config_loaded = True
 
@@ -327,15 +362,21 @@ with st.container():
     with preset_col1:
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
+            st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            save_stored_data()
             st.rerun()
     with preset_col2:
         if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
+            st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            save_stored_data()
             st.rerun()
     with preset_col3:
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
+            st.session_state.current_config["selected_cities"] = []
+            save_stored_data()
             st.rerun()
     with preset_col4:
         st.button("🧹 Reset Bộ Nhớ (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Xóa sạch cờ đã vào lệnh và cờ đã check để làm chu kỳ mới")
@@ -393,10 +434,10 @@ if search_clicked:
         "min_p_yes": min_p_yes, "max_p_yes": max_p_yes, "min_p_no": min_p_no, "max_p_no": max_p_no, 
         "filter_yes": filter_yes, "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
         "gap_value": gap_value, "gap_direction": gap_direction, "selected_dates": selected_dates, 
-        "selected_cities": selected_cities, "excluded_cities": excluded_cities,
-        "ordered_markets": st.session_state.ordered_markets, "checked_markets": st.session_state.checked_markets
+        "selected_cities": selected_cities, "excluded_cities": excluded_cities
     }
     st.session_state.current_config = current_config
+    save_stored_data()  # Lưu lại thông số cấu hình bộ lọc mới vào file JSON
 
     with st.spinner("Finding markets..."):
         res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
