@@ -13,59 +13,58 @@ CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
 STORAGE_FILE = "storage_config.json"  # File lưu trữ dữ liệu trên Server
 
-# Danh sách thành phố tích hợp đầy đủ Lat/Lon để gọi Open-Meteo API
 CITIES_DATA = [
-    {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active", "lat": 47.6062, "lon": -122.3321},
-    {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active", "lat": 34.0522, "lon": -118.2437},
-    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active", "lat": 37.7749, "lon": -122.4194},
-    {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active", "lat": 39.7392, "lon": -104.9903},
-    {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active", "lat": 41.8781, "lon": -87.6298},
-    {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active", "lat": 32.7767, "lon": -96.7970},
-    {"key": "austin", "name": "Austin", "polymarketCity": "austin", "marketType": "highest", "status": "active", "lat": 30.2672, "lon": -97.7431},
-    {"key": "houston", "name": "Houston", "polymarketCity": "houston", "marketType": "highest", "status": "active", "lat": 29.7604, "lon": -95.3698},
-    {"key": "mexicocity", "name": "Mexico City", "polymarketCity": "mexico-city", "marketType": "highest", "status": "active", "lat": 19.4326, "lon": -99.1332},
-    {"key": "panamacity", "name": "Panama City", "polymarketCity": "panama-city", "marketType": "highest", "status": "active", "lat": 8.9824, "lon": -79.5199},
-    {"key": "miami", "name": "Miami", "polymarketCity": "miami", "marketType": ["highest", "lowest"], "status": "active", "lat": 25.7617, "lon": -80.1918},
-    {"key": "atlanta", "name": "Atlanta", "polymarketCity": "atlanta", "marketType": "highest", "status": "active", "lat": 33.7490, "lon": -84.3880},
-    {"key": "nyc", "name": "New York", "polymarketCity": "nyc", "marketType": ["highest", "lowest"], "status": "active", "lat": 40.7128, "lon": -74.0060},
-    {"key": "toronto", "name": "Toronto", "polymarketCity": "toronto", "marketType": "highest", "status": "active", "lat": 43.6532, "lon": -79.3832},
-    {"key": "buenosaires", "name": "Buenos Aires", "polymarketCity": "buenos-aires", "marketType": "highest", "status": "active", "lat": -34.6037, "lon": -58.3816},
-    {"key": "saopaulo", "name": "São Paulo", "polymarketCity": "sao-paulo", "marketType": "highest", "status": "active", "lat": -23.5505, "lon": -46.6333},
-    {"key": "london", "name": "London", "polymarketCity": "london", "marketType": ["highest", "lowest"], "status": "active", "lat": 51.5074, "lon": -0.1278},
-    {"key": "lagos", "name": "Lagos", "polymarketCity": "lagos", "marketType": "highest", "status": "active", "lat": 6.5244, "lon": 3.3792},
-    {"key": "amsterdam", "name": "Amsterdam", "polymarketCity": "amsterdam", "marketType": "highest", "status": "active", "lat": 52.3676, "lon": 4.9041},
-    {"key": "paris", "name": "Paris", "polymarketCity": "paris", "marketType": ["highest", "lowest"], "status": "active", "lat": 48.8566, "lon": 2.3522},
-    {"key": "munich", "name": "Munich", "polymarketCity": "munich", "marketType": "highest", "status": "active", "lat": 48.1351, "lon": 11.5820},
-    {"key": "milan", "name": "Milan", "polymarketCity": "milan", "marketType": "highest", "status": "active", "lat": 45.4642, "lon": 9.1900},
-    {"key": "madrid", "name": "Madrid", "polymarketCity": "madrid", "marketType": "highest", "status": "active", "lat": 40.4168, "lon": -3.7038},
-    {"key": "warsaw", "name": "Warsaw", "polymarketCity": "warsaw", "marketType": "highest", "status": "active", "lat": 52.2297, "lon": 21.0122},
-    {"key": "helsinki", "name": "Helsinki", "polymarketCity": "helsinki", "marketType": "highest", "status": "active", "lat": 60.1699, "lon": 24.9384},
-    {"key": "capetown", "name": "Cape Town", "polymarketCity": "cape-town", "marketType": "highest", "status": "active", "lat": -33.9249, "lon": 18.4241},
-    {"key": "telaviv", "name": "Tel Aviv", "polymarketCity": "tel-aviv", "marketType": "highest", "status": "active", "lat": 32.0853, "lon": 34.7818},
-    {"key": "moscow", "name": "Moscow", "polymarketCity": "moscow", "marketType": "highest", "status": "active", "lat": 55.7558, "lon": 37.6173},
-    {"key": "istanbul", "name": "Istanbul", "polymarketCity": "istanbul", "marketType": "highest", "status": "active", "lat": 41.0082, "lon": 28.9784},
-    {"key": "ankara", "name": "Ankara", "polymarketCity": "ankara", "marketType": "highest", "status": "active", "lat": 39.9334, "lon": 32.8597},
-    {"key": "jeddah", "name": "Jeddah", "polymarketCity": "jeddah", "marketType": "highest", "status": "active", "lat": 21.5433, "lon": 39.1728},
-    {"key": "karachi", "name": "Karachi", "polymarketCity": "karachi", "marketType": "highest", "status": "active", "lat": 24.8607, "lon": 67.0011},
-    {"key": "lucknow", "name": "Lucknow", "polymarketCity": "lucknow", "marketType": "highest", "status": "active", "lat": 26.8467, "lon": 80.9462},
-    {"key": "kualalumpur", "name": "Kuala Lumpur", "polymarketCity": "kuala-lumpur", "marketType": "highest", "status": "active", "lat": 3.1390, "lon": 101.6869},
-    {"key": "jakarta", "name": "Jakarta", "polymarketCity": "jakarta", "marketType": "highest", "status": "active", "lat": -6.2088, "lon": 106.8456},
-    {"key": "singapore", "name": "Singapore", "polymarketCity": "singapore", "marketType": "highest", "status": "active", "lat": 1.3521, "lon": 103.8198},
-    {"key": "hongkong", "name": "Hong Kong", "polymarketCity": "hong-kong", "marketType": ["highest", "lowest"], "status": "active", "lat": 22.3193, "lon": 114.1694},
-    {"key": "beijing", "name": "Beijing", "polymarketCity": "beijing", "marketType": "highest", "status": "active", "lat": 39.9042, "lon": 116.4074},
-    {"key": "chengdu", "name": "Chengdu", "polymarketCity": "chengdu", "marketType": "highest", "status": "active", "lat": 30.5728, "lon": 104.0668},
-    {"key": "chongqing", "name": "Chongqing", "polymarketCity": "chongqing", "marketType": "highest", "status": "active", "lat": 29.5630, "lon": 106.5516},
-    {"key": "shanghai", "name": "Shanghai", "polymarketCity": "shanghai", "marketType": ["highest", "lowest"], "status": "active", "lat": 31.2304, "lon": 121.4737},
-    {"key": "shenzhen", "name": "Shenzhen", "polymarketCity": "shenzhen", "marketType": "highest", "status": "active", "lat": 22.5431, "lon": 114.0579},
-    {"key": "taipei", "name": "Taipei", "polymarketCity": "taipei", "marketType": "highest", "status": "active", "lat": 25.0330, "lon": 121.5654},
-    {"key": "qingdao", "name": "Qingdao", "polymarketCity": "qingdao", "marketType": "highest", "status": "active", "lat": 36.0671, "lon": 120.3826},
-    {"key": "wuhan", "name": "Wuhan", "polymarketCity": "wuhan", "marketType": "highest", "status": "active", "lat": 30.5928, "lon": 114.3055},
-    {"key": "guangzhou", "name": "Guangzhou", "polymarketCity": "guangzhou", "marketType": "highest", "status": "active", "lat": 23.1291, "lon": 113.2644},
-    {"key": "manila", "name": "Manila", "polymarketCity": "manila", "marketType": "highest", "status": "active", "lat": 14.5995, "lon": 120.9842},
-    {"key": "seoul", "name": "Seoul", "polymarketCity": "seoul", "marketType": ["highest", "lowest"], "status": "active", "lat": 37.5665, "lon": 126.9780},
-    {"key": "busan", "name": "Busan", "polymarketCity": "busan", "marketType": "highest", "status": "active", "lat": 35.1796, "lon": 129.0756},
-    {"key": "tokyo", "name": "Tokyo", "polymarketCity": "tokyo", "marketType": ["highest", "lowest"], "status": "active", "lat": 35.6762, "lon": 139.6503},
-    {"key": "wellington", "name": "Wellington", "polymarketCity": "wellington", "marketType": "highest", "status": "active", "lat": -41.2865, "lon": 174.7762}
+    {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
+    {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active"},
+    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active"},
+    {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active"},
+    {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active"},
+    {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active"},
+    {"key": "austin", "name": "Austin", "polymarketCity": "austin", "marketType": "highest", "status": "active"},
+    {"key": "houston", "name": "Houston", "polymarketCity": "houston", "marketType": "highest", "status": "active"},
+    {"key": "mexicocity", "name": "Mexico City", "polymarketCity": "mexico-city", "marketType": "highest", "status": "active"},
+    {"key": "panamacity", "name": "Panama City", "polymarketCity": "panama-city", "marketType": "highest", "status": "active"},
+    {"key": "miami", "name": "Miami", "polymarketCity": "miami", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "atlanta", "name": "Atlanta", "polymarketCity": "atlanta", "marketType": "highest", "status": "active"},
+    {"key": "nyc", "name": "New York", "polymarketCity": "nyc", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "toronto", "name": "Toronto", "polymarketCity": "toronto", "marketType": "highest", "status": "active"},
+    {"key": "buenosaires", "name": "Buenos Aires", "polymarketCity": "buenos-aires", "marketType": "highest", "status": "active"},
+    {"key": "saopaulo", "name": "São Paulo", "polymarketCity": "sao-paulo", "marketType": "highest", "status": "active"},
+    {"key": "london", "name": "London", "polymarketCity": "london", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "lagos", "name": "Lagos", "polymarketCity": "lagos", "marketType": "highest", "status": "active"},
+    {"key": "amsterdam", "name": "Amsterdam", "polymarketCity": "amsterdam", "marketType": "highest", "status": "active"},
+    {"key": "paris", "name": "Paris", "polymarketCity": "paris", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "munich", "name": "Munich", "polymarketCity": "munich", "marketType": "highest", "status": "active"},
+    {"key": "milan", "name": "Milan", "polymarketCity": "milan", "marketType": "highest", "status": "active"},
+    {"key": "madrid", "name": "Madrid", "polymarketCity": "madrid", "marketType": "highest", "status": "active"},
+    {"key": "warsaw", "name": "Warsaw", "polymarketCity": "warsaw", "marketType": "highest", "status": "active"},
+    {"key": "helsinki", "name": "Helsinki", "polymarketCity": "helsinki", "marketType": "highest", "status": "active"},
+    {"key": "capetown", "name": "Cape Town", "polymarketCity": "cape-town", "marketType": "highest", "status": "active"},
+    {"key": "telaviv", "name": "Tel Aviv", "polymarketCity": "tel-aviv", "marketType": "highest", "status": "active"},
+    {"key": "moscow", "name": "Moscow", "polymarketCity": "moscow", "marketType": "highest", "status": "active"},
+    {"key": "istanbul", "name": "Istanbul", "polymarketCity": "istanbul", "marketType": "highest", "status": "active"},
+    {"key": "ankara", "name": "Ankara", "polymarketCity": "ankara", "marketType": "highest", "status": "active"},
+    {"key": "jeddah", "name": "Jeddah", "polymarketCity": "jeddah", "marketType": "highest", "status": "active"},
+    {"key": "karachi", "name": "Karachi", "polymarketCity": "karachi", "marketType": "highest", "status": "active"},
+    {"key": "lucknow", "name": "Lucknow", "polymarketCity": "lucknow", "marketType": "highest", "status": "active"},
+    {"key": "kualalumpur", "name": "Kuala Lumpur", "polymarketCity": "kuala-lumpur", "marketType": "highest", "status": "active"},
+    {"key": "jakarta", "name": "Jakarta", "polymarketCity": "jakarta", "marketType": "highest", "status": "active"},
+    {"key": "singapore", "name": "Singapore", "polymarketCity": "singapore", "marketType": "highest", "status": "active"},
+    {"key": "hongkong", "name": "Hong Kong", "polymarketCity": "hong-kong", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "beijing", "name": "Beijing", "polymarketCity": "beijing", "marketType": "highest", "status": "active"},
+    {"key": "chengdu", "name": "Chengdu", "polymarketCity": "chengdu", "marketType": "highest", "status": "active"},
+    {"key": "chongqing", "name": "Chongqing", "polymarketCity": "chongqing", "marketType": "highest", "status": "active"},
+    {"key": "shanghai", "name": "Shanghai", "polymarketCity": "shanghai", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "shenzhen", "name": "Shenzhen", "polymarketCity": "shenzhen", "marketType": "highest", "status": "active"},
+    {"key": "taipei", "name": "Taipei", "polymarketCity": "taipei", "marketType": "highest", "status": "active"},
+    {"key": "qingdao", "name": "Qingdao", "polymarketCity": "qingdao", "marketType": "highest", "status": "active"},
+    {"key": "wuhan", "name": "Wuhan", "polymarketCity": "wuhan", "marketType": "highest", "status": "active"},
+    {"key": "guangzhou", "name": "Guangzhou", "polymarketCity": "guangzhou", "marketType": "highest", "status": "active"},
+    {"key": "manila", "name": "Manila", "polymarketCity": "manila", "marketType": "highest", "status": "active"},
+    {"key": "seoul", "name": "Seoul", "polymarketCity": "seoul", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "busan", "name": "Busan", "polymarketCity": "busan", "marketType": "highest", "status": "active"},
+    {"key": "tokyo", "name": "Tokyo", "polymarketCity": "tokyo", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "wellington", "name": "Wellington", "polymarketCity": "wellington", "marketType": "highest", "status": "active"}
 ]
 
 # --- TỰ ĐỘNG GÁN 3 MODEL TỐI ƯU NHẤT THEO KHU VỰC CỦA THÀNH PHỐ ---
@@ -191,50 +190,6 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def fetch_model_temperatures(session, lat, lon, date_display_str, market_type):
-    """Gọi Open-Meteo API để lấy dữ liệu dự báo nhiệt độ của các mô hình cốt lõi"""
-    try:
-        date_obj = datetime.strptime(date_display_str, "%d/%m/%Y")
-        date_iso = date_obj.strftime("%Y-%m-%d")
-        suffix = "max" if market_type == "highest" else "min"
-        
-        # Ép Open-Meteo trả về đúng các trường dữ liệu theo từng model bằng cách ghép suffix
-        daily_params = [
-            f"temperature_2m_{suffix}_ecmwf_ifs",
-            f"temperature_2m_{suffix}_gfs_seamless",
-            f"temperature_2m_{suffix}_icon_seamless",
-            f"temperature_2m_{suffix}_gem_global",
-            f"temperature_2m_{suffix}_access_g",
-            f"temperature_2m_{suffix}_ukmo_seamless"  # Thêm UKMO cho các thị trường EU/Asia
-        ]
-        daily_str = ",".join(daily_params)
-        
-        url = (
-            f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={lat}&longitude={lon}&daily={daily_str}"
-            f"&temperature_unit=fahrenheit"
-            f"&start_date={date_iso}&end_date={date_iso}&timezone=auto"
-        )
-        
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
-            
-        daily_data = data.get("daily", {})
-        
-        # Trả về mapping chuẩn khớp với cấu hình MODEL_STYLES trên giao diện
-        return {
-            "ECMWF": daily_data.get(f"temperature_2m_{suffix}_ecmwf_ifs", [None])[0],
-            "GFS": daily_data.get(f"temperature_2m_{suffix}_gfs_seamless", [None])[0],
-            "ICON": daily_data.get(f"temperature_2m_{suffix}_icon_seamless", [None])[0],
-            "GEM": daily_data.get(f"temperature_2m_{suffix}_gem_global", [None])[0],
-            "ACCESS-G": daily_data.get(f"temperature_2m_{suffix}_access_g", [None])[0],
-            "UKMO": daily_data.get(f"temperature_2m_{suffix}_ukmo_seamless", [None])[0], # Map thêm dòng này
-        }
-    except Exception:
-        return None
-
 async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
@@ -288,7 +243,6 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                         highest_idx = i
             
             event_has_match = False
-            temp_matches = []
             for yes_id, info in market_map.items():
                 if info["side"] != "YES": continue
                 m = info["m"]
@@ -341,7 +295,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
 
                 if is_match:
                     event_has_match = True
-                    temp_matches.append({
+                    matches_list.append({
                         "City": city["name"], "Date": date_info["display"], "Type": "Highest" if m_type == "highest" else "Lowest",
                         "Market": m.get("groupItemTitle") or m.get("question"), "YES": yes_price * 100, "NO": no_price * 100,
                         "YES_Depth": y_depth, "NO_Depth": n_depth, "Spread": spread, "MatchedPrice": matched_price,
@@ -349,12 +303,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                         "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
                     })
             
-            if event_has_match:
-                weather_data = await fetch_model_temperatures(session, city["lat"], city["lon"], date_info["display"], m_type)
-                for item in temp_matches:
-                    item["ModelForecasts"] = weather_data
-                    matches_list.append(item)
-            else:
+            if not event_has_match:
                 filtered_cities.append(city["name"])
 
         except Exception:
@@ -567,7 +516,7 @@ if st.session_state.scan_results is not None:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
                 
-                # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ (NEON GLOW TÊN THÀNH PHỐ) ---
+                # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ (NEON GLOW) ---
                 city_info = next((c for c in CITIES_DATA if c["name"] == city_name), None)
                 model_badges = ""
                 if city_info and "models" in city_info:
@@ -612,41 +561,25 @@ if st.session_state.scan_results is not None:
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     row = event_markets.iloc[0]
-                    
-                    # --- XỬ LÝ ĐƯỜNG DỰ BÁO NHIỆT ĐỘ LIVE TỪ OPEN-METEO ---
-                    forecasts_str = ""
-                    if "ModelForecasts" in row and isinstance(row["ModelForecasts"], dict):
-                        f_items = []
-                        relevant_models = city_info["models"] if city_info else ["ECMWF", "ICON", "GFS"]
-                        for m in relevant_models:
-                            val = row["ModelForecasts"].get(m)
-                            if val is not None:
-                                style = MODEL_STYLES.get(m, {"color": "#8b949e"})
-                                f_items.append(f"<span style='color:{style['color']}; font-weight:bold;'>{m}: {val:.1f}°F</span>")
-                        if f_items:
-                            forecasts_str = f"<div style='font-size:0.82rem; margin-top:6px; color:#8b949e; background-color:#1c2128; padding:4px 8px; border-radius:4px; display:inline-block; border:1px solid #30363d;'>🔮 Live Forecasts: {' &nbsp;|&nbsp; '.join(f_items)}</div>"
-
-                    # --- [FIXED] TRIỆT TIÊU TOÀN BỘ INDENTATION TRONG MULTI-LINE HTML ĐỂ TRÁNH LỖI MARKDOWN PARSING ---
-                    st.markdown(f"""<div class="market-row" style="{row_bg}">
-<div style="flex:2; color:#e6edf3">
-<div style="font-weight:500;">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
-{forecasts_str}
-</div>
-<div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
-<div style="text-align:center">
-<div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
-<div class="depth-text">${row['YES_Depth']:,.0f}</div>
-</div>
-<div class="spread-box">Spread {row['Spread']:.1f}¢</div>
-<div style="text-align:center">
-<div class="price-btn-no">No {row['NO']:.1f}¢</div>
-<div class="depth-text">${row['NO_Depth']:,.0f}</div>
-</div>
-</div>
-<div style="flex:1; text-align:right">
-<a href="{row['Link']}" target="_blank" class="open-link">Open</a>
-</div>
-</div>""", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="market-row" style="{row_bg}">
+                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                            <div style="text-align:center">
+                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
+                            </div>
+                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                            <div style="text-align:center">
+                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
+                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
+                            </div>
+                        </div>
+                        <div style="flex:1; text-align:right">
+                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.warning("No markets match your criteria.")
