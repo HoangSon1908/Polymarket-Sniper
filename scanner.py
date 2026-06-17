@@ -510,14 +510,37 @@ if st.session_state.scan_results is not None:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
                 
+# --- [CẬP NHẬT] ĐỊNH NGHĨA MÀU SẮC NỔI BẬT CHO TỪNG MODEL ---
+                MODEL_STYLES = {
+                    "ECMWF": {"color": "#bf5af2", "bg": "#251733", "border": "#bf5af2"},    # Tím neon
+                    "ICON": {"color": "#30b0c7", "bg": "#12272e", "border": "#30b0c7"},     # Xanh Cyan
+                    "GFS": {"color": "#ff453a", "bg": "#331311", "border": "#ff453a"},      # Đỏ rực
+                    "UKMO": {"color": "#ff375f", "bg": "#33121a", "border": "#ff375f"},     # Hồng đậm
+                    "GEM": {"color": "#0a84ff", "bg": "#112033", "border": "#0a84ff"},      # Xanh Dương
+                    "ACCESS-G": {"color": "#30d158", "bg": "#132e18", "border": "#30d158"}  # Xanh Lá
+                }
+
                 # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ ---
                 city_info = next((c for c in CITIES_DATA if c["name"] == city_name), None)
                 model_badges = ""
                 if city_info and "models" in city_info:
-                    model_badges = "".join([
-                        f"<span style='background-color: #21262d; color: #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: normal; margin-left: 6px; border: 1px solid #30363d;'>{m}</span>" 
-                        for m in city_info["models"]
-                    ])
+                    for m in city_info["models"]:
+                        # Lấy style riêng, nếu model lạ hoắc thì fallback về màu xám cũ
+                        style = MODEL_STYLES.get(m, {"color": "#8b949e", "bg": "#21262d", "border": "#30363d"})
+                        model_badges += f"""
+                            <span style='
+                                background-color: {style["bg"]}; 
+                                color: {style["color"]}; 
+                                border: 1px solid {style["border"]}; 
+                                padding: 3px 10px; 
+                                border-radius: 6px; 
+                                font-size: 0.78rem; 
+                                font-weight: bold; 
+                                margin-left: 8px;
+                                display: inline-block;
+                                box-shadow: 0 0 4px {style["border"]}40;
+                            '>{m}</span>
+                        """
                 
                 # Hiển thị tên thành phố kèm các model tối ưu bên cạnh
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}{model_badges}</span></div>""", unsafe_allow_html=True)
