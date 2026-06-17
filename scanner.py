@@ -192,31 +192,45 @@ def get_target_dates(selected_date_labels):
     return dates
 
 async def fetch_model_temperatures(session, lat, lon, date_display_str, market_type):
-    """Gọi Open-Meteo API để lấy dữ liệu dự báo nhiệt độ của 5 mô hình cốt lõi"""
+    """Gọi Open-Meteo API để lấy dữ liệu dự báo nhiệt độ của các mô hình cốt lõi"""
     try:
         date_obj = datetime.strptime(date_display_str, "%d/%m/%Y")
         date_iso = date_obj.strftime("%Y-%m-%d")
-        models = "ecmwf_ifs,gfs_seamless,icon_seamless,gem_global,access_g"
         suffix = "max" if market_type == "highest" else "min"
+        
+        # Ép Open-Meteo trả về đúng các trường dữ liệu theo từng model bằng cách ghép suffix
+        daily_params = [
+            f"temperature_2m_{suffix}_ecmwf_ifs",
+            f"temperature_2m_{suffix}_gfs_seamless",
+            f"temperature_2m_{suffix}_icon_seamless",
+            f"temperature_2m_{suffix}_gem_global",
+            f"temperature_2m_{suffix}_access_g",
+            f"temperature_2m_{suffix}_ukmo_seamless"  # Thêm UKMO cho các thị trường EU/Asia
+        ]
+        daily_str = ",".join(daily_params)
         
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min"
-            f"&models={models}&temperature_unit=fahrenheit"
+            f"latitude={lat}&longitude={lon}&daily={daily_str}"
+            f"&temperature_unit=fahrenheit"
             f"&start_date={date_iso}&end_date={date_iso}&timezone=auto"
         )
+        
         async with session.get(url) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
             
         daily_data = data.get("daily", {})
+        
+        # Trả về mapping chuẩn khớp với cấu hình MODEL_STYLES trên giao diện
         return {
             "ECMWF": daily_data.get(f"temperature_2m_{suffix}_ecmwf_ifs", [None])[0],
             "GFS": daily_data.get(f"temperature_2m_{suffix}_gfs_seamless", [None])[0],
             "ICON": daily_data.get(f"temperature_2m_{suffix}_icon_seamless", [None])[0],
             "GEM": daily_data.get(f"temperature_2m_{suffix}_gem_global", [None])[0],
             "ACCESS-G": daily_data.get(f"temperature_2m_{suffix}_access_g", [None])[0],
+            "UKMO": daily_data.get(f"temperature_2m_{suffix}_ukmo_seamless", [None])[0], # Map thêm dòng này
         }
     except Exception:
         return None
