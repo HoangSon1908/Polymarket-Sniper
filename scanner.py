@@ -69,7 +69,7 @@ CITIES_DATA = [
 
 DEFAULT_FAVORITE_CITIES = [
     "Tokyo", "Seoul", "Busan", "Singapore", "Shanghai", "Wuhan", "Chengdu", 
-    "Chongqing", "Beijing", "Kuala Lumpur", "Taipei", "Manila", 
+    "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
     "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington"
@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao"],
+    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao", "Taipei"],
     "ordered_markets": [],
     "checked_markets": []
 }
