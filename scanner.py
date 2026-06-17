@@ -510,17 +510,17 @@ if st.session_state.scan_results is not None:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
                 
-# --- [CẬP NHẬT] ĐỊNH NGHĨA MÀU SẮC NỔI BẬT CHO TỪNG MODEL ---
-                MODEL_STYLES = {
-                    "ECMWF": {"color": "#bf5af2", "bg": "#251733", "border": "#bf5af2"},    # Tím neon
-                    "ICON": {"color": "#30b0c7", "bg": "#12272e", "border": "#30b0c7"},     # Xanh Cyan
-                    "GFS": {"color": "#ff453a", "bg": "#331311", "border": "#ff453a"},      # Đỏ rực
-                    "UKMO": {"color": "#ff375f", "bg": "#33121a", "border": "#ff375f"},     # Hồng đậm
-                    "GEM": {"color": "#0a84ff", "bg": "#112033", "border": "#0a84ff"},      # Xanh Dương
-                    "ACCESS-G": {"color": "#30d158", "bg": "#132e18", "border": "#30d158"}  # Xanh Lá
-                }
+    # --- [CẬP NHẬT] ĐỊNH NGHĨA MÀU SẮC NỔI BẬT CHO TỪNG MODEL ---
+    MODEL_STYLES = {
+         "ECMWF": {"color": "#bf5af2", "bg": "#251733", "border": "#bf5af2"},    # Tím neon
+         "ICON": {"color": "#30b0c7", "bg": "#12272e", "border": "#30b0c7"},     # Xanh Cyan
+         "GFS": {"color": "#ff453a", "bg": "#331311", "border": "#ff453a"},      # Đỏ rực
+         "UKMO": {"color": "#ff375f", "bg": "#33121a", "border": "#ff375f"},     # Hồng đậm
+        "GEM": {"color": "#0a84ff", "bg": "#112033", "border": "#0a84ff"},      # Xanh Dương
+        "ACCESS-G": {"color": "#30d158", "bg": "#132e18", "border": "#30d158"}  # Xanh Lá
+    }
 
-                # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ ---
+     # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ ---
                 city_info = next((c for c in CITIES_DATA if c["name"] == city_name), None)
                 model_badges = ""
                 if city_info and "models" in city_info:
