@@ -335,7 +335,6 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                         "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
                     })
             
-            # Nếu sự kiện ăn kèo, tiến hành fetch data thời tiết 1 lần duy nhất cho event đó
             if event_has_match:
                 weather_data = await fetch_model_temperatures(session, city["lat"], city["lon"], date_info["display"], m_type)
                 for item in temp_matches:
@@ -613,28 +612,27 @@ if st.session_state.scan_results is not None:
                         if f_items:
                             forecasts_str = f"<div style='font-size:0.82rem; margin-top:6px; color:#8b949e; background-color:#1c2128; padding:4px 8px; border-radius:4px; display:inline-block; border:1px solid #30363d;'>🔮 Live Forecasts: {' &nbsp;|&nbsp; '.join(f_items)}</div>"
 
-                    st.markdown(f"""
-                    <div class="market-row" style="{row_bg}">
-                        <div style="flex:2; color:#e6edf3">
-                            <div style="font-weight:500;">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
-                            {forecasts_str}
-                        </div>
-                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
-                            <div style="text-align:center">
-                                <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
-                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
-                            </div>
-                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
-                            <div style="text-align:center">
-                                <div class="price-btn-no">No {row['NO']:.1f}¢</div>
-                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
-                            </div>
-                        </div>
-                        <div style="flex:1; text-align:right">
-                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    # --- [FIXED] TRIỆT TIÊU TOÀN BỘ INDENTATION TRONG MULTI-LINE HTML ĐỂ TRÁNH LỖI MARKDOWN PARSING ---
+                    st.markdown(f"""<div class="market-row" style="{row_bg}">
+<div style="flex:2; color:#e6edf3">
+<div style="font-weight:500;">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+{forecasts_str}
+</div>
+<div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+<div style="text-align:center">
+<div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
+<div class="depth-text">${row['YES_Depth']:,.0f}</div>
+</div>
+<div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+<div style="text-align:center">
+<div class="price-btn-no">No {row['NO']:.1f}¢</div>
+<div class="depth-text">${row['NO_Depth']:,.0f}</div>
+</div>
+</div>
+<div style="flex:1; text-align:right">
+<a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+</div>
+</div>""", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.warning("No markets match your criteria.")
