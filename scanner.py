@@ -67,6 +67,19 @@ CITIES_DATA = [
     {"key": "wellington", "name": "Wellington", "polymarketCity": "wellington", "marketType": "highest", "status": "active"}
 ]
 
+# --- TỰ ĐỘNG GÁN 3 MODEL TỐI ƯU NHẤT THEO KHU VỰC CỦA THÀNH PHỐ ---
+for city in CITIES_DATA:
+    name = city["name"]
+    if name in ["Seattle", "Los Angeles", "San Francisco", "Denver", "Chicago", "Dallas", "Austin", "Houston", "Miami", "Atlanta", "New York", "Mexico City", "Panama City", "Buenos Aires", "São Paulo", "Lagos", "Cape Town"]:
+        city["models"] = ["ECMWF", "ICON", "GFS"]
+    elif name == "Toronto":
+        city["models"] = ["ECMWF", "GEM", "ICON"]
+    elif name == "Wellington":
+        city["models"] = ["ECMWF", "ACCESS-G", "ICON"]
+    else:
+        # Mặc định cho Châu Á và Châu Âu công hiệu nhất với cụm này
+        city["models"] = ["ECMWF", "ICON", "UKMO"]
+
 DEFAULT_FAVORITE_CITIES = [
     "Tokyo", "Seoul", "Busan", "Singapore", "Shanghai", "Wuhan", "Chengdu", 
     "Chongqing", "Beijing", "Kuala Lumpur", "Taipei", "Manila", 
@@ -496,7 +509,18 @@ if st.session_state.scan_results is not None:
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
-                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
+                
+                # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ ---
+                city_info = next((c for c in CITIES_DATA if c["name"] == city_name), None)
+                model_badges = ""
+                if city_info and "models" in city_info:
+                    model_badges = "".join([
+                        f"<span style='background-color: #21262d; color: #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: normal; margin-left: 6px; border: 1px solid #30363d;'>{m}</span>" 
+                        for m in city_info["models"]
+                    ])
+                
+                # Hiển thị tên thành phố kèm các model tối ưu bên cạnh
+                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}{model_badges}</span></div>""", unsafe_allow_html=True)
                 
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
