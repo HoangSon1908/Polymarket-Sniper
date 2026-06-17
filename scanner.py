@@ -77,8 +77,17 @@ for city in CITIES_DATA:
     elif name == "Wellington":
         city["models"] = ["ECMWF", "ACCESS-G", "ICON"]
     else:
-        # Mặc định cho Châu Á và Châu Âu công hiệu nhất với cụm này
         city["models"] = ["ECMWF", "ICON", "UKMO"]
+
+# --- ĐỊNH NGHĨA MÀU SẮC NEON GLOW CHO TỪNG MODEL ---
+MODEL_STYLES = {
+    "ECMWF": {"color": "#bf5af2", "bg": "#251733", "border": "#bf5af2"},    # Tím
+    "ICON": {"color": "#30b0c7", "bg": "#12272e", "border": "#30b0c7"},     # Cyan
+    "GFS": {"color": "#ff453a", "bg": "#331311", "border": "#ff453a"},      # Đỏ
+    "UKMO": {"color": "#ff375f", "bg": "#33121a", "border": "#ff375f"},     # Hồng đậm
+    "GEM": {"color": "#0a84ff", "bg": "#112033", "border": "#0a84ff"},      # Xanh Dương
+    "ACCESS-G": {"color": "#30d158", "bg": "#132e18", "border": "#30d158"}  # Xanh Lá
+}
 
 DEFAULT_FAVORITE_CITIES = [
     "Tokyo", "Seoul", "Busan", "Singapore", "Shanghai", "Wuhan", "Chengdu", 
@@ -109,7 +118,6 @@ DEFAULT_CONFIG = {
 
 # --- JSON PERSISTENCE HELPERS ---
 def load_stored_data():
-    """Đọc dữ liệu từ file JSON trên server nếu có, không thì trả về cấu hình mặc định"""
     if os.path.exists(STORAGE_FILE):
         try:
             with open(STORAGE_FILE, "r", encoding="utf-8") as f:
@@ -123,7 +131,6 @@ def load_stored_data():
     }
 
 def save_stored_data():
-    """Ghi trực tiếp trạng thái hiện tại từ session_state xuống file JSON trên server"""
     data_to_save = {
         "config": st.session_state.current_config,
         "ordered_markets": st.session_state.ordered_markets,
@@ -143,7 +150,7 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.append(event_title)
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
-    save_stored_data()  # Lưu lại ngay lập tức
+    save_stored_data()
 
 def toggle_checked_status(event_title):
     if event_title in st.session_state.checked_markets:
@@ -152,12 +159,12 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.append(event_title)
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
-    save_stored_data()  # Lưu lại ngay lập tức
+    save_stored_data()
 
 def clear_all_flags():
     st.session_state.ordered_markets = []
     st.session_state.checked_markets = []
-    save_stored_data()  # Lưu lại ngay lập tức
+    save_stored_data()
 
 # --- HELPER FUNCTIONS ---
 def parse_val(title):
@@ -328,7 +335,6 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# Khởi tạo trạng thái ban đầu dựa vào file cứng JSON trên server thay vì chỉ dùng default cứng
 if "config_loaded" not in st.session_state:
     stored_data = load_stored_data()
     st.session_state.current_config = stored_data["config"]
@@ -450,7 +456,7 @@ if search_clicked:
         "selected_cities": selected_cities, "excluded_cities": excluded_cities
     }
     st.session_state.current_config = current_config
-    save_stored_data()  # Lưu lại thông số cấu hình bộ lọc mới vào file JSON
+    save_stored_data()
 
     with st.spinner("Finding markets..."):
         res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
@@ -510,39 +516,17 @@ if st.session_state.scan_results is not None:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
                 
-    # --- [CẬP NHẬT] ĐỊNH NGHĨA MÀU SẮC NỔI BẬT CHO TỪNG MODEL ---
-    MODEL_STYLES = {
-         "ECMWF": {"color": "#bf5af2", "bg": "#251733", "border": "#bf5af2"},    # Tím neon
-         "ICON": {"color": "#30b0c7", "bg": "#12272e", "border": "#30b0c7"},     # Xanh Cyan
-         "GFS": {"color": "#ff453a", "bg": "#331311", "border": "#ff453a"},      # Đỏ rực
-         "UKMO": {"color": "#ff375f", "bg": "#33121a", "border": "#ff375f"},     # Hồng đậm
-        "GEM": {"color": "#0a84ff", "bg": "#112033", "border": "#0a84ff"},      # Xanh Dương
-        "ACCESS-G": {"color": "#30d158", "bg": "#132e18", "border": "#30d158"}  # Xanh Lá
-    }
-
-     # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ ---
+                # --- LẤY BADGES 3 MODEL KHUYẾN NGHỊ (NEON GLOW) ---
                 city_info = next((c for c in CITIES_DATA if c["name"] == city_name), None)
                 model_badges = ""
                 if city_info and "models" in city_info:
                     for m in city_info["models"]:
-                        # Lấy style riêng, nếu model lạ hoắc thì fallback về màu xám cũ
                         style = MODEL_STYLES.get(m, {"color": "#8b949e", "bg": "#21262d", "border": "#30363d"})
-                        model_badges += f"""
-                            <span style='
-                                background-color: {style["bg"]}; 
-                                color: {style["color"]}; 
-                                border: 1px solid {style["border"]}; 
-                                padding: 3px 10px; 
-                                border-radius: 6px; 
-                                font-size: 0.78rem; 
-                                font-weight: bold; 
-                                margin-left: 8px;
-                                display: inline-block;
-                                box-shadow: 0 0 4px {style["border"]}40;
-                            '>{m}</span>
-                        """
+                        color = style["color"]
+                        bg = style["bg"]
+                        border = style["border"]
+                        model_badges += f"<span style='background-color: {bg}; color: {color}; border: 1px solid {border}; padding: 3px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: bold; margin-left: 8px; display: inline-block; box-shadow: 0 0 4px {border}40;'>{m}</span>"
                 
-                # Hiển thị tên thành phố kèm các model tối ưu bên cạnh
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}{model_badges}</span></div>""", unsafe_allow_html=True)
                 
                 for event_title in city_results['EventTitle'].unique():
