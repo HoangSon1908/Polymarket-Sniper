@@ -72,7 +72,7 @@ DEFAULT_FAVORITE_CITIES = [
     "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
-    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington"
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao", "Taipei"],
+    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao"],
     "ordered_markets": [],
     "checked_markets": []
 }
