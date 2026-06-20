@@ -91,7 +91,8 @@ DEFAULT_CONFIG = {
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao"],
     "ordered_markets": [],
-    "checked_markets": []
+    "checked_markets": [],
+    "hide_ordered": False
 }
 
 # --- JSON PERSISTENCE HELPERS ---
@@ -315,6 +316,9 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
+# Neo ẩn giúp nút Back to Top hoạt động chính xác
+st.markdown("<div id='top'></div>", unsafe_allow_html=True)
+
 # Khởi tạo trạng thái ban đầu dựa vào file cứng JSON trên server thay vì chỉ dùng default cứng
 if "config_loaded" not in st.session_state:
     stored_data = load_stored_data()
@@ -342,8 +346,8 @@ st.markdown("""
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
     .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
-    .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-    .open-link:hover { background-color: #2ea043; }
+    .copy-link { background-color: #8957e5; color: white !important; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; }
+    .copy-link:hover { background-color: #a371f7; }
     .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>
 """, unsafe_allow_html=True)
@@ -389,7 +393,9 @@ with st.container():
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
     
     with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
-    with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
+    with c2: 
+        hide_ordered = st.checkbox("Ẩn các kèo đã ĐÁNH DẤU VÀO LỆNH 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered")
+        st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:5px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
     y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
     with y_head_col:
@@ -434,7 +440,8 @@ if search_clicked:
         "min_p_yes": min_p_yes, "max_p_yes": max_p_yes, "min_p_no": min_p_no, "max_p_no": max_p_no, 
         "filter_yes": filter_yes, "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
         "gap_value": gap_value, "gap_direction": gap_direction, "selected_dates": selected_dates, 
-        "selected_cities": selected_cities, "excluded_cities": excluded_cities
+        "selected_cities": selected_cities, "excluded_cities": excluded_cities,
+        "hide_ordered": hide_ordered
     }
     st.session_state.current_config = current_config
     save_stored_data()  # Lưu lại thông số cấu hình bộ lọc mới vào file JSON
@@ -460,6 +467,11 @@ if st.session_state.scan_results is not None:
     total_scanned_cities = len(actual_scanned_list)
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
+    
+    # Thực hiện lọc bỏ hoàn toàn các kèo đã đánh dấu là vào lệnh nếu config bật
+    if not df.empty and config.get("hide_ordered", False):
+        df = df[~df['EventTitle'].isin(st.session_state.ordered_markets)]
+
     sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
     matched_cities_count = len(sorted_cities)
 
@@ -467,11 +479,25 @@ if st.session_state.scan_results is not None:
     filtered_list = [c for c in no_match_at_all if c in filtered_raw]
     error_list = [c for c in no_match_at_all if c not in filtered_list]
 
-    # --- HÀNG TIÊU ĐỀ & TIÊU CHÍ PHÂN LOẠI BADGES (NẰM NGANG) ---
-    col_title, col_badges = st.columns([1.2, 3])
+    # --- HÀNG TIÊU ĐỀ & TIÊU CHÍ PHÂN LOẠI BADGES ---
+    col_title, col_badges = st.columns([1.5, 2.7])
     with col_title:
         badge_color = "#1f6feb" if matched_cities_count > 0 else "#f85149"
         st.markdown(f"### Search Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        
+        # Thêm dòng hiển thị chi tiết danh sách các kèo đã vào lệnh kế bên/dưới Search Results
+        if st.session_state.ordered_markets:
+            ordered_summary = []
+            for item in st.session_state.ordered_markets:
+                match = re.search(r"(Highest|Lowest) temperature in ([a-zA-Z\s]+) on", item)
+                if match:
+                    ordered_summary.append(f"{match.group(2)} ({match.group(1)[:4].upper()})")
+                else:
+                    ordered_summary.append(item[:15] + "...")
+            summary_str = ", ".join(ordered_summary)
+            st.markdown(f"<p style='color:#3fb950; font-size:0.85rem; margin-top:6px; margin-bottom:0px;'><b>🟢 Đã vào lệnh:</b> {summary_str}</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='color:#8b949e; font-size:0.85rem; margin-top:6px; margin-bottom:0px;'><b>🟢 Đã vào lệnh:</b> Chưa có kèo nào</p>", unsafe_allow_html=True)
         
     with col_badges:
         badges_html = ""
@@ -538,14 +564,14 @@ if st.session_state.scan_results is not None:
                                 <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
                                 <div class="depth-text">${row['YES_Depth']:,.0f}</div>
                             </div>
-                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                            <div class="shadow-box" style="background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d;">Spread {row['Spread']:.1f}¢</div>
                             <div style="text-align:center">
                                 <div class="price-btn-no">No {row['NO']:.1f}¢</div>
                                 <div class="depth-text">${row['NO_Depth']:,.0f}</div>
                             </div>
                         </div>
                         <div style="flex:1; text-align:right">
-                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                            <button onclick="navigator.clipboard.writeText('{row['Link']}'); alert('Đã copy link market thành công! ✨\\n{row['Market']}')" class="copy-link">Copy Link</button>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
