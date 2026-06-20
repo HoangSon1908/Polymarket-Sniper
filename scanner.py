@@ -530,10 +530,6 @@ if st.session_state.scan_results is not None:
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     row = event_markets.iloc[0]
-                    
-                    # Chuẩn hóa link để tránh lỗi ký tự trong chuỗi JS
-                    clean_link = row['Link'].replace("'", "\\'")
-                    
                     st.markdown(f"""
                     <div class="market-row" style="{row_bg}">
                         <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
@@ -549,22 +545,7 @@ if st.session_state.scan_results is not None:
                             </div>
                         </div>
                         <div style="flex:1; text-align:right">
-                            <a href="javascript:void(0);" 
-                               class="open-link" 
-                               style="background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9 !important;"
-                               onclick="navigator.clipboard.writeText('{clean_link}').then(() => {{ 
-                                   let originalText = this.innerText;
-                                   this.innerText = 'Copied! ✅';
-                                   this.style.backgroundColor = '#0d4429';
-                                   this.style.color = '#3fb950';
-                                   setTimeout(() => {{ 
-                                       this.innerText = originalText; 
-                                       this.style.backgroundColor = '#21262d';
-                                       this.style.color = '#c9d1d9';
-                                   }}, 1000);
-                               }});">
-                               Copy Link
-                            </a>
+                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
