@@ -316,7 +316,7 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# Neo ẩn giúp nút Back to Top hoạt động chính xác
+# Neo ẩn giúp tính năng cuộn mượt mà hoạt động ổn định trên Streamlit
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
 # Khởi tạo trạng thái ban đầu dựa vào file cứng JSON trên server thay vì chỉ dùng default cứng
@@ -341,14 +341,25 @@ st.markdown("""
     .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
     .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
-    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; }
-    .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
-    .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
-    .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
-    .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
-    .copy-link { background-color: #8957e5; color: white !important; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; }
-    .copy-link:hover { background-color: #a371f7; }
-    .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    
+    /* CSS để định hình nút Back To Top dạng Markdown Link */
+    a[href="#top"] {
+        position: fixed;
+        bottom: 70px;
+        right: 20px;
+        background-color: #1f6feb;
+        color: white !important;
+        padding: 10px 15px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: bold;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    a[href="#top"]:hover {
+        background-color: #388bfd;
+        text-decoration: none;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -468,7 +479,7 @@ if st.session_state.scan_results is not None:
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
     
-    # Thực hiện lọc bỏ hoàn toàn các kèo đã đánh dấu là vào lệnh nếu config bật
+    # Thực hiện lọc bỏ hoàn toàn các kèo đã đánh dấu là vào lệnh nếu bộ lọc bật lên
     if not df.empty and config.get("hide_ordered", False):
         df = df[~df['EventTitle'].isin(st.session_state.ordered_markets)]
 
@@ -485,7 +496,7 @@ if st.session_state.scan_results is not None:
         badge_color = "#1f6feb" if matched_cities_count > 0 else "#f85149"
         st.markdown(f"### Search Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         
-        # Thêm dòng hiển thị chi tiết danh sách các kèo đã vào lệnh kế bên/dưới Search Results
+        # Dòng hiển thị chi tiết danh sách các kèo đã vào lệnh kế bên/dưới Search Results
         if st.session_state.ordered_markets:
             ordered_summary = []
             for item in st.session_state.ordered_markets:
@@ -556,29 +567,88 @@ if st.session_state.scan_results is not None:
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     row = event_markets.iloc[0]
-                    st.markdown(f"""
+                    
+                    # Chuẩn bị ID an toàn và dữ liệu tránh lỗi ký tự đặc biệt khi truyền vào Javascript alert
+                    safe_market_title = row['Market'].replace("'", "\\'").replace('"', '\\"')
+                    safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
+                    
+                    # Render Market Row thông qua st.components.v1.html để bảo toàn mã lệnh sao chép Clipboard bằng JS
+                    row_html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <style>
+                        body {{
+                            background-color: transparent;
+                            margin: 0;
+                            padding: 0;
+                            color: #e6edf3;
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                            overflow: hidden;
+                        }}
+                        .market-row {{
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 10px;
+                            font-size: 0.9rem;
+                            box-sizing: border-box;
+                            height: 68px;
+                        }}
+                        .price-btn-yes {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }}
+                        .price-btn-no {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }}
+                        .spread-box {{ background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }}
+                        .depth-text {{ color: #8b949e; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
+                        .copy-link {{ background-color: #8957e5; color: white !important; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; }}
+                        .copy-link:hover {{ background-color: #a371f7; }}
+                    </style>
+                    </head>
+                    <body>
                     <div class="market-row" style="{row_bg}">
-                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                        <div style="flex:2; color:#e6edf3; font-weight: 500; padding-right:10px;">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
                             <div style="text-align:center">
                                 <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
                                 <div class="depth-text">${row['YES_Depth']:,.0f}</div>
                             </div>
-                            <div class="shadow-box" style="background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d;">Spread {row['Spread']:.1f}¢</div>
+                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
                             <div style="text-align:center">
                                 <div class="price-btn-no">No {row['NO']:.1f}¢</div>
                                 <div class="depth-text">${row['NO_Depth']:,.0f}</div>
                             </div>
                         </div>
                         <div style="flex:1; text-align:right">
-                            <button onclick="navigator.clipboard.writeText('{row['Link']}'); alert('Đã copy link market thành công! ✨\\n{row['Market']}')" class="copy-link">Copy Link</button>
+                            <textarea id="txt_{safe_id}" style="position:absolute; left:-9999px;">{row['Link']}</textarea>
+                            <button onclick="copyToClipboard()" class="copy-link">Copy Link</button>
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    <script>
+                    function copyToClipboard() {{
+                        var copyText = document.getElementById("txt_{safe_id}");
+                        copyText.select();
+                        copyText.setSelectionRange(0, 99999);
+                        try {{
+                            var successful = document.execCommand('copy');
+                            if (successful) {{
+                                alert("Đã copy link market thành công! ✨\\n" + "{safe_market_title}");
+                            }} else {{
+                                alert("Lỗi: Không thể copy link.");
+                            }}
+                        }} catch (err) {{
+                            alert("Trình duyệt không hỗ trợ lệnh copy tự động.");
+                        }}
+                    }}
+                    </script>
+                    </body>
+                    </html>
+                    """
+                    st.components.v1.html(row_html, height=68)
+                    
                 st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.warning("No markets match your criteria.")
 
-    st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
+    # Sử dụng cú pháp native Markdown link để kích hoạt router scroll nội bộ của Streamlit lên ID #top
+    st.markdown('[↑ Back to Top](#top)')
 else:
     st.info("Select cities and filters, then click 'Search Markets' to begin.")
