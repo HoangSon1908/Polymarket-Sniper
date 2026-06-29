@@ -4,12 +4,14 @@ import aiohttp
 import streamlit as st
 import pandas as pd
 import re
+import os
 from datetime import datetime, timedelta
 
 # --- CONSTANTS ---
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
+STORAGE_FILE = "storage_config.json"  # Server Storage Config
 
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
@@ -70,7 +72,7 @@ DEFAULT_FAVORITE_CITIES = [
     "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
-    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Qingdao"
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -83,14 +85,41 @@ DEFAULT_CONFIG = {
     "filter_yes": False,
     "filter_no": True,
     "gap_filter_enabled": True,
-    "gap_value": 5,
+    "gap_value": 4,
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
+    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao"],
     "ordered_markets": [],
-    "checked_markets": []
+    "checked_markets": [],
+    "hide_ordered": False
 }
+
+# --- JSON PERSISTENCE HELPERS ---
+def load_stored_data():
+    if os.path.exists(STORAGE_FILE):
+        try:
+            with open(STORAGE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "config": DEFAULT_CONFIG.copy(),
+        "ordered_markets": [],
+        "checked_markets": []
+    }
+
+def save_stored_data():
+    data_to_save = {
+        "config": st.session_state.current_config,
+        "ordered_markets": st.session_state.ordered_markets,
+        "checked_markets": st.session_state.checked_markets
+    }
+    try:
+        with open(STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        st.error(f"Config Write Error: {e}")
 
 # --- CALLBACK FUNCTIONS ---
 def toggle_ordered_status(event_title):
@@ -100,6 +129,7 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.append(event_title)
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
+    save_stored_data()
 
 def toggle_checked_status(event_title):
     if event_title in st.session_state.checked_markets:
@@ -108,10 +138,12 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.append(event_title)
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
+    save_stored_data()
 
 def clear_all_flags():
     st.session_state.ordered_markets = []
     st.session_state.checked_markets = []
+    save_stored_data()
 
 # --- HELPER FUNCTIONS ---
 def parse_val(title):
@@ -282,37 +314,55 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# Khởi tạo trạng thái ban đầu độc lập trên RAM Session
+# Native top anchor for Streamlit's router scroll
+st.markdown("<div id='top'></div>", unsafe_allow_html=True)
+
 if "config_loaded" not in st.session_state:
-    st.session_state.current_config = DEFAULT_CONFIG.copy()
-    st.session_state.selected_cities = DEFAULT_FAVORITE_CITIES.copy()
-    st.session_state.excluded_cities = DEFAULT_CONFIG["excluded_cities"].copy()
-    st.session_state.ordered_markets = []
-    st.session_state.checked_markets = []
+    stored_data = load_stored_data()
+    st.session_state.current_config = stored_data["config"]
+    st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
+    st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
+    st.session_state.ordered_markets = stored_data["ordered_markets"]
+    st.session_state.checked_markets = stored_data["checked_markets"]
     st.session_state.scan_results = None
     st.session_state.config_loaded = True
 
 config = st.session_state.current_config
 
+# Custom Elysia Aesthetic (Beautiful dark magenta-pink theme ✨)
 st.markdown("""
 <style>
-    .main { background-color: #0e1117; }
-    .stApp { background-color: #0e1117; }
-    header { background-color: #161b22 !important; border-bottom: 1px solid #30363d; }
-    .filter-box { background-color: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 20px; }
-    .result-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-    .city-header { color: #e6edf3; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
-    .event-box { border-top: 1px solid #30363d; padding-top: 10px; margin-top: 10px; }
-    .market-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; }
+    .main, .stApp { background-color: #120b0e; }
+    header { background-color: #1c1116 !important; border-bottom: 1px solid #4a2335; }
+    .filter-box { background-color: #1c1116; padding: 20px; border-radius: 12px; border: 1px solid #4a2335; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(236,72,153,0.1); }
+    .result-card { background-color: #1c1116; border: 1px solid #4a2335; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(236,72,153,0.05); }
+    .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
+    .event-box { border-top: 1px solid #4a2335; padding-top: 10px; margin-top: 10px; }
+    
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
-    .spread-box { background-color: #21262d; color: #8b949e; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #30363d; }
-    .depth-text { color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
-    .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
-    .open-link:hover { background-color: #2ea043; }
-    .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-    /* Ẩn hoàn toàn khoảng trống sidebar nếu có */
-    [data-testid="stSidebar"] { display: none; }
+    .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }
+    .depth-text { color: #9d8590; font-size: 0.7rem; margin-top: 2px; }
+    
+    /* Back to Top CSS Button Style */
+    a[href="#top"] {
+        position: fixed;
+        bottom: 70px;
+        right: 20px;
+        background-color: #ec4899;
+        color: white !important;
+        padding: 10px 18px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: bold;
+        z-index: 1000;
+        box-shadow: 0 4px 15px rgba(236,72,153,0.4);
+        transition: background 0.3s ease;
+    }
+    a[href="#top"]:hover {
+        background-color: #f43f5e;
+        text-decoration: none;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -331,20 +381,23 @@ with st.container():
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            save_stored_data()
             st.rerun()
     with preset_col2:
         if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            save_stored_data()
             st.rerun()
     with preset_col3:
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
+            save_stored_data()
             st.rerun()
     with preset_col4:
-        st.button("🧹 Reset Bộ Nhớ (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Xóa sạch cờ đã vào lệnh và cờ đã check để làm chu kỳ mới")
+        st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Clear all checked and ordered market flags for a new trading cycle.")
     
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
@@ -354,7 +407,9 @@ with st.container():
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
     
     with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
-    with c2: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:28px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
+    with c2: 
+        hide_ordered = st.checkbox("Hide ORDERED markets 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered")
+        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:5px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
     y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
     with y_head_col:
@@ -386,11 +441,11 @@ with st.container():
             gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
         with gc3:
             gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed")
-        st.markdown(f"<p style='color:#8b949e; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
-    with col_msg: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:10px'>Mỗi phiên kết nối (Tab trình duyệt) hoạt động độc lập.</p>", unsafe_allow_html=True)
+    with col_msg: st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>Settings apply to the current active session.</p>", unsafe_allow_html=True)
     with col_btn: search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -399,9 +454,11 @@ if search_clicked:
         "min_p_yes": min_p_yes, "max_p_yes": max_p_yes, "min_p_no": min_p_no, "max_p_no": max_p_no, 
         "filter_yes": filter_yes, "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
         "gap_value": gap_value, "gap_direction": gap_direction, "selected_dates": selected_dates, 
-        "selected_cities": selected_cities, "excluded_cities": excluded_cities
+        "selected_cities": selected_cities, "excluded_cities": excluded_cities,
+        "hide_ordered": hide_ordered
     }
     st.session_state.current_config = current_config
+    save_stored_data()
 
     with st.spinner("Finding markets..."):
         res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
@@ -424,6 +481,10 @@ if st.session_state.scan_results is not None:
     total_scanned_cities = len(actual_scanned_list)
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
+    
+    if not df.empty and config.get("hide_ordered", False):
+        df = df[~df['EventTitle'].isin(st.session_state.ordered_markets)]
+
     sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
     matched_cities_count = len(sorted_cities)
 
@@ -431,11 +492,24 @@ if st.session_state.scan_results is not None:
     filtered_list = [c for c in no_match_at_all if c in filtered_raw]
     error_list = [c for c in no_match_at_all if c not in filtered_list]
 
-    # --- HÀNG TIÊU ĐỀ & TIÊU CHÍ PHÂN LOẠI BADGES (NẰM NGANG) ---
-    col_title, col_badges = st.columns([1.2, 3])
+    # --- HEADER ROW & BADGES ---
+    col_title, col_badges = st.columns([1.6, 2.6])
     with col_title:
-        badge_color = "#1f6feb" if matched_cities_count > 0 else "#f85149"
+        badge_color = "#ec4899" if matched_cities_count > 0 else "#f85149"
         st.markdown(f"### Search Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        
+        if st.session_state.ordered_markets:
+            ordered_summary = []
+            for item in st.session_state.ordered_markets:
+                match = re.search(r"(Highest|Lowest) temperature in ([a-zA-Z\s]+) on", item)
+                if match:
+                    ordered_summary.append(f"{match.group(2)} ({match.group(1)[:4].upper()})")
+                else:
+                    ordered_summary.append(item[:15] + "...")
+            summary_str = ", ".join(ordered_summary)
+            st.markdown(f"<p style='color:#3fb950; font-size:0.85rem; margin-top:6px; margin-bottom:0px;'><b>🟢 Ordered:</b> {summary_str}</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='color:#9d8590; font-size:0.85rem; margin-top:6px; margin-bottom:0px;'><b>🟢 Ordered:</b> None</p>", unsafe_allow_html=True)
         
     with col_badges:
         badges_html = ""
@@ -451,11 +525,11 @@ if st.session_state.scan_results is not None:
                 badges_html += f"<span style='background-color: #490e15; color: #f85149; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 6px; border: 1px solid #f85149; display: inline-block; margin-bottom: 4px;'>{city}</span>"
         
         if not filtered_list and not error_list:
-            badges_html = "<span style='color: #3fb950; font-size: 0.85rem; font-style: italic; font-weight: bold;'>✅ All selected cities matched perfectly!</span>"
+            badges_html = "<span style='color: #ec4899; font-size: 0.85rem; font-style: italic; font-weight: bold;'>✅ All selected cities matched perfectly!</span>"
             
         st.markdown(f"<div style='margin-top: 10px;'>{badges_html}</div>", unsafe_allow_html=True)
 
-    # --- KẾT QUẢ KÈO ĐẠT TIÊU CHUẨN (HIỂN THỊ FULL WIDTH) ---
+    # --- RENDER CARD FULL WIDTH ---
     if not df.empty:
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
@@ -470,33 +544,66 @@ if st.session_state.scan_results is not None:
                     
                     if is_ordered:
                         title_color = "#3fb950"
-                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ĐÃ VÀO LỆNH</span>"
+                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ORDERED</span>"
                         row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
                     elif is_checked:
                         title_color = "#e3b341"
-                        badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 ĐÃ CHECK (THEO DÕI)</span>"
+                        badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 CHECKED (MONITORING)</span>"
                         row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
                     else:
                         title_color = "#e6edf3"
                         badge = ""
-                        row_bg = "border-bottom: 1px solid #21262d; opacity: 1.0;"
+                        row_bg = "border-bottom: 1px solid #4a2335; opacity: 1.0;"
                     
                     title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
                     with title_col:
                         st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
                     
                     with check_btn_col:
-                        chk_text = "Bỏ Check" if is_checked else "Đã Check ✔"
+                        chk_text = "Uncheck" if is_checked else "Checked ✔"
                         st.button(chk_text, key=f"chk_{event_title}", on_click=toggle_checked_status, args=(event_title,), use_container_width=True)
                         
                     with order_btn_col:
-                        btn_text = "Hủy cờ lệnh" if is_ordered else "Vào lệnh 🚀"
+                        btn_text = "Cancel Order" if is_ordered else "Order 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     row = event_markets.iloc[0]
-                    st.markdown(f"""
+                    safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
+                    
+                    # Inside Iframe: Elysia Pink Pink Button Style & Seamless Inline Text Feedback 💖
+                    row_html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <style>
+                        body {{
+                            background-color: transparent;
+                            margin: 0;
+                            padding: 0;
+                            color: #e6edf3;
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                            overflow: hidden;
+                        }}
+                        .market-row {{
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 10px;
+                            font-size: 0.9rem;
+                            box-sizing: border-box;
+                            height: 68px;
+                        }}
+                        .price-btn-yes {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }}
+                        .price-btn-no {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }}
+                        .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }}
+                        .depth-text {{ color: #9d8590; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
+                        .copy-link {{ background-color: #ec4899; color: white !important; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s ease; }}
+                        .copy-link:hover {{ background-color: #f43f5e; }}
+                    </style>
+                    </head>
+                    <body>
                     <div class="market-row" style="{row_bg}">
-                        <div style="flex:2; color:#e6edf3">{row['Market']} <span style="color:#8b949e; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
+                        <div style="flex:2; color:#e6edf3; font-weight: 500; padding-right:10px;">{row['Market']} <span style="color:#9d8590; font-size:0.7rem; margin-left:10px">(Best Price)</span></div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
                             <div style="text-align:center">
                                 <div class="price-btn-yes">Yes {row['YES']:.1f}¢</div>
@@ -509,14 +616,40 @@ if st.session_state.scan_results is not None:
                             </div>
                         </div>
                         <div style="flex:1; text-align:right">
-                            <a href="{row['Link']}" target="_blank" class="open-link">Open</a>
+                            <textarea id="txt_{safe_id}" style="position:absolute; left:-9999px;">{row['Link']}</textarea>
+                            <button id="btn_{safe_id}" onclick="copyToClipboard()" class="copy-link">Copy Link</button>
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    <script>
+                    function copyToClipboard() {{
+                        var copyText = document.getElementById("txt_{safe_id}");
+                        copyText.select();
+                        copyText.setSelectionRange(0, 99999);
+                        try {{
+                            var successful = document.execCommand('copy');
+                            if (successful) {{
+                                var btn = document.getElementById("btn_{safe_id}");
+                                btn.innerText = "Copied!";
+                                btn.style.backgroundColor = "#ffb7c5";
+                                btn.style.color = "#4a1525";
+                                setTimeout(function() {{
+                                    btn.innerText = "Copy Link";
+                                    btn.style.backgroundColor = "#ec4899";
+                                    btn.style.color = "white";
+                                }}, 2000);
+                            }}
+                        }} catch (err) {{}}
+                    }}
+                    </script>
+                    </body>
+                    </html>
+                    """
+                    st.components.v1.html(row_html, height=68)
+                    
                 st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.warning("No markets match your criteria.")
 
-    st.markdown('<a href="#top" class="back-to-top">↑ Back to Top</a>', unsafe_allow_html=True)
+    st.markdown('[↑ Back to Top](#top)')
 else:
     st.info("Select cities and filters, then click 'Search Markets' to begin.")
