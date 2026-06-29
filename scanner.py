@@ -4,7 +4,6 @@ import aiohttp
 import streamlit as st
 import pandas as pd
 import re
-import os
 from datetime import datetime, timedelta
 
 # --- CONSTANTS ---
@@ -71,7 +70,7 @@ DEFAULT_FAVORITE_CITIES = [
     "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Munich", "Paris", "Milan", "Warsaw", "Madrid", 
-    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Qingdao"
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -84,53 +83,14 @@ DEFAULT_CONFIG = {
     "filter_yes": False,
     "filter_no": True,
     "gap_filter_enabled": True,
-    "gap_value": 5,
+    "gap_value": 4,
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
+    "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta", "Qingdao"],
     "ordered_markets": [],
     "checked_markets": []
 }
-
-# --- DYNAMIC STORAGE HELPERS ---
-def get_user_storage_file():
-    """Hàm sinh tên file dựa trên User ID hiện tại của session"""
-    user_id = st.session_state.get("user_id", "default")
-    # Chuẩn hóa tên file, chỉ giữ lại chữ cái và số để tránh lỗi đường dẫn hệ thống
-    safe_id = re.sub(r'[^a-zA-Z0-9_]', '', user_id)
-    if not safe_id:
-        safe_id = "default"
-    return f"storage_config_{safe_id}.json"
-
-def load_stored_data():
-    """Đọc dữ liệu từ file định danh riêng của User"""
-    storage_file = get_user_storage_file()
-    if os.path.exists(storage_file):
-        try:
-            with open(storage_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
-        "config": DEFAULT_CONFIG.copy(),
-        "ordered_markets": [],
-        "checked_markets": []
-    }
-
-def save_stored_data():
-    """Ghi dữ liệu xuống đúng file định danh của User"""
-    storage_file = get_user_storage_file()
-    data_to_save = {
-        "config": st.session_state.current_config,
-        "ordered_markets": st.session_state.ordered_markets,
-        "checked_markets": st.session_state.checked_markets
-    }
-    try:
-        with open(storage_file, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        st.error(f"Lỗi ghi file cấu hình: {e}")
 
 # --- CALLBACK FUNCTIONS ---
 def toggle_ordered_status(event_title):
@@ -140,7 +100,6 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.append(event_title)
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
-    save_stored_data()
 
 def toggle_checked_status(event_title):
     if event_title in st.session_state.checked_markets:
@@ -149,12 +108,10 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.append(event_title)
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
-    save_stored_data()
 
 def clear_all_flags():
     st.session_state.ordered_markets = []
     st.session_state.checked_markets = []
-    save_stored_data()
 
 # --- HELPER FUNCTIONS ---
 def parse_val(title):
@@ -325,24 +282,15 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# --- USER MANAGEMENT SIDEBAR (Xử lý tách biệt bộ nhớ) ---
-st.sidebar.markdown("### 🔑 ĐĂNG NHẬP HỆ THỐNG")
-user_input_id = st.sidebar.text_input(
-    "Nhập Nickname của bạn:", 
-    value="default", 
-    help="Nhập tên riêng của bạn để hệ thống lưu cấu hình và trạng thái cờ lệnh tách biệt hoàn toàn với người khác."
-)
-
-# Kích hoạt tải lại dữ liệu động khi đổi User ID
-if "user_id" not in st.session_state or st.session_state.user_id != user_input_id:
-    st.session_state.user_id = user_input_id
-    stored_data = load_stored_data()
-    st.session_state.current_config = stored_data["config"]
-    st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
-    st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
-    st.session_state.ordered_markets = stored_data["ordered_markets"]
-    st.session_state.checked_markets = stored_data["checked_markets"]
+# Khởi tạo trạng thái ban đầu độc lập trên RAM Session
+if "config_loaded" not in st.session_state:
+    st.session_state.current_config = DEFAULT_CONFIG.copy()
+    st.session_state.selected_cities = DEFAULT_FAVORITE_CITIES.copy()
+    st.session_state.excluded_cities = DEFAULT_CONFIG["excluded_cities"].copy()
+    st.session_state.ordered_markets = []
+    st.session_state.checked_markets = []
     st.session_state.scan_results = None
+    st.session_state.config_loaded = True
 
 config = st.session_state.current_config
 
@@ -363,6 +311,8 @@ st.markdown("""
     .open-link { background-color: #238636; color: white !important; padding: 4px 12px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; }
     .open-link:hover { background-color: #2ea043; }
     .back-to-top { position: fixed; bottom: 70px; right: 20px; background-color: #1f6feb; color: white !important; padding: 10px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    /* Ẩn hoàn toàn khoảng trống sidebar nếu có */
+    [data-testid="stSidebar"] { display: none; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -381,20 +331,17 @@ with st.container():
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
-            save_stored_data()
             st.rerun()
     with preset_col2:
         if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
-            save_stored_data()
             st.rerun()
     with preset_col3:
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
-            save_stored_data()
             st.rerun()
     with preset_col4:
         st.button("🧹 Reset Bộ Nhớ (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Xóa sạch cờ đã vào lệnh và cờ đã check để làm chu kỳ mới")
@@ -443,7 +390,7 @@ with st.container():
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
-    with col_msg: st.markdown(f"<p style='color:#8b949e; font-size:0.9rem; margin-top:10px'>Settings apply to active user: <b>{st.session_state.user_id}</b></p>", unsafe_allow_html=True)
+    with col_msg: st.markdown("<p style='color:#8b949e; font-size:0.9rem; margin-top:10px'>Mỗi phiên kết nối (Tab trình duyệt) hoạt động độc lập.</p>", unsafe_allow_html=True)
     with col_btn: search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -455,7 +402,6 @@ if search_clicked:
         "selected_cities": selected_cities, "excluded_cities": excluded_cities
     }
     st.session_state.current_config = current_config
-    save_stored_data()  # Lưu cấu hình vào file riêng của user
 
     with st.spinner("Finding markets..."):
         res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
