@@ -1,3 +1,4 @@
 aiohttp
 streamlit
 pandas
+streamlit-local-storage==0.0.1
