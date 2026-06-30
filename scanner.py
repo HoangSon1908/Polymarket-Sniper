@@ -83,7 +83,7 @@ DEFAULT_CONFIG = {
     "gap_filter_enabled": True,
     "gap_value": 5,
     "gap_direction": "Both",
-    "min_shares": 100.0,
+    "min_shares": 50.0,
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
