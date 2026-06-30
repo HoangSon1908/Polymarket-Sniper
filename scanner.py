@@ -6,12 +6,15 @@ import pandas as pd
 import re
 import os
 from datetime import datetime, timedelta
+from streamlit_local_storage import LocalStorage
 
 # --- CONSTANTS ---
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
-STORAGE_FILE = "storage_config.json"  # Server Storage Config
+
+# Khởi tạo đối tượng LocalStorage để giao tiếp với trình duyệt người dùng
+local_storage = LocalStorage()
 
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
@@ -95,14 +98,15 @@ DEFAULT_CONFIG = {
     "hide_ordered": False
 }
 
-# --- JSON PERSISTENCE HELPERS ---
+# --- LOCAL STORAGE HELPERS (REPLACED SERVER JSON FILE) ---
 def load_stored_data():
-    if os.path.exists(STORAGE_FILE):
-        try:
-            with open(STORAGE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    try:
+        # Lấy chuỗi JSON trực tiếp từ kho lưu trữ Local Storage của trình duyệt người dùng
+        stored_json = local_storage.getItem("poly_weather_config")
+        if stored_json:
+            return json.loads(stored_json)
+    except Exception:
+        pass
     return {
         "config": DEFAULT_CONFIG.copy(),
         "ordered_markets": [],
@@ -116,10 +120,10 @@ def save_stored_data():
         "checked_markets": st.session_state.checked_markets
     }
     try:
-        with open(STORAGE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+        # Ghi đè cấu hình mới xuống Local Storage của trình duyệt
+        local_storage.setItem("poly_weather_config", json.dumps(data_to_save, ensure_ascii=False))
     except Exception as e:
-        st.error(f"Config Write Error: {e}")
+        st.error(f"Browser Storage Write Error: {e}")
 
 # --- CALLBACK FUNCTIONS ---
 def toggle_ordered_status(event_title):
@@ -317,15 +321,16 @@ st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", lay
 # Native top anchor for Streamlit's router scroll
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
-if "config_loaded" not in st.session_state:
-    stored_data = load_stored_data()
-    st.session_state.current_config = stored_data["config"]
+# Khởi tạo Session State đồng bộ hóa mượt mà với Local Storage của riêng từng Trình duyệt
+stored_data = load_stored_data()
+
+if "current_config" not in st.session_state:
+    st.session_state.current_config = stored_data.get("config", DEFAULT_CONFIG.copy())
     st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
-    st.session_state.ordered_markets = stored_data["ordered_markets"]
-    st.session_state.checked_markets = stored_data["checked_markets"]
+    st.session_state.ordered_markets = stored_data.get("ordered_markets", [])
+    st.session_state.checked_markets = stored_data.get("checked_markets", [])
     st.session_state.scan_results = None
-    st.session_state.config_loaded = True
 
 config = st.session_state.current_config
 
@@ -540,6 +545,7 @@ if st.session_state.scan_results is not None:
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     
                     is_ordered = event_title in st.session_state.ordered_markets
+                    is_checked = event_title in st.session_title if hasattr(st.session_state, 'checked_markets') else event_title in st.session_state.checked_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
                     if is_ordered:
