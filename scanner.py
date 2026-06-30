@@ -98,10 +98,9 @@ DEFAULT_CONFIG = {
     "hide_ordered": False
 }
 
-# --- LOCAL STORAGE HELPERS (REPLACED SERVER JSON FILE) ---
+# --- LOCAL STORAGE HELPERS ---
 def load_stored_data():
     try:
-        # Lấy chuỗi JSON trực tiếp từ kho lưu trữ Local Storage của trình duyệt người dùng
         stored_json = local_storage.getItem("poly_weather_config")
         if stored_json:
             return json.loads(stored_json)
@@ -120,7 +119,7 @@ def save_stored_data():
         "checked_markets": st.session_state.checked_markets
     }
     try:
-        # Ghi đè cấu hình mới xuống Local Storage của trình duyệt
+        # Sử dụng chính xác chữ I viết hoa (setItem) theo quy định thư viện
         local_storage.setItem("poly_weather_config", json.dumps(data_to_save, ensure_ascii=False))
     except Exception as e:
         st.error(f"Browser Storage Write Error: {e}")
@@ -321,7 +320,7 @@ st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", lay
 # Native top anchor for Streamlit's router scroll
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
-# Khởi tạo Session State đồng bộ hóa mượt mà với Local Storage của riêng từng Trình duyệt
+# Khởi tạo Session State từ Local Storage
 stored_data = load_stored_data()
 
 if "current_config" not in st.session_state:
@@ -545,7 +544,6 @@ if st.session_state.scan_results is not None:
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     
                     is_ordered = event_title in st.session_state.ordered_markets
-                    is_checked = event_title in st.session_title if hasattr(st.session_state, 'checked_markets') else event_title in st.session_state.checked_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
                     if is_ordered:
