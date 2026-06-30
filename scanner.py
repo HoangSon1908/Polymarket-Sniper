@@ -77,15 +77,13 @@ DEFAULT_FAVORITE_CITIES = [
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 DEFAULT_CONFIG = {
-    "min_p_yes": 80.0,
-    "max_p_yes": 99.5,
     "min_p_no": 90.0,
     "max_p_no": 99.5,
-    "filter_yes": False,
     "filter_no": True,
     "gap_filter_enabled": True,
     "gap_value": 5,
     "gap_direction": "Both",
+    "min_shares": 100.0,
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Shenzhen", "Hong Kong", "Jakarta"],
@@ -145,7 +143,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_value, gap_direction, min_shares, matches_list, filtered_cities, error_cities):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -182,19 +180,34 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
             books = {b["asset_id"]: b for b in books_data}
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
+            # --- SỬA ĐỔI LOGIC LỌC GAP: Tính toán dựa trên Mid-Price từ Order Book YES ---
             highest_idx = -1
             if gap_filter_enabled:
-                max_yes_found = -1.0
+                max_mid_found = -1.0
                 for i, m in enumerate(sorted_markets):
                     tokens = json.loads(m.get("clobTokenIds", "[]"))
                     if len(tokens) < 2: continue
                     y_id = tokens[0]
                     y_book = books.get(y_id, {})
                     y_asks = y_book.get("asks", [])
-                    if not y_asks: continue
-                    y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
-                    if y_p > max_yes_found:
-                        max_yes_found = y_p
+                    y_bids = y_book.get("bids", [])
+                    
+                    # Trích xuất giá Ask thấp nhất và Bid cao nhất
+                    best_ask = float(min(y_asks, key=lambda x: float(x["price"]))["price"]) if y_asks else None
+                    best_bid = float(max(y_bids, key=lambda x: float(x["price"]))["price"]) if y_bids else None
+                    
+                    # Tính toán Mid-Price linh hoạt phòng trường hợp một bên trống lệnh
+                    if best_ask is not None and best_bid is not None:
+                        mid_price = (best_ask + best_bid) / 2
+                    elif best_ask is not None:
+                        mid_price = best_ask
+                    elif best_bid is not None:
+                        mid_price = best_bid
+                    else:
+                        mid_price = 0.0
+                        
+                    if mid_price > max_mid_found:
+                        max_mid_found = mid_price
                         highest_idx = i
             
             event_has_match = False
@@ -218,35 +231,33 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 is_match = False
                 matched_price = 100.0
                 
-                if filter_yes and (min_p_yes/100) <= yes_price <= (max_p_yes/100):
-                    is_match = True
-                    matched_price = min(matched_price, yes_price * 100)
-                
+                # --- LỌC THEO ĐIỀU KIỆN NO & SỐ SHARES ---
                 if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
-                    pass_gap = True
-                    if gap_filter_enabled and highest_idx != -1:
-                        current_idx = -1
-                        for idx, sm in enumerate(sorted_markets):
-                            if sm['id'] == m['id']:
-                                current_idx = idx
-                                break
-                        if current_idx != -1:
-                            diff = current_idx - highest_idx
-                            effective_dir = gap_direction
-                            if m_type == "lowest":
-                                if gap_direction == "Up": effective_dir = "Down"
-                                elif gap_direction == "Down": effective_dir = "Up"
-                            
-                            if effective_dir == "Both":
-                                if abs(diff) <= gap_value: pass_gap = False
-                            elif effective_dir == "Up":
-                                if diff <= gap_value: pass_gap = False
-                            elif effective_dir == "Down":
-                                if diff >= -gap_value: pass_gap = False
-                    
-                    if pass_gap:
-                        is_match = True
-                        matched_price = min(matched_price, no_price * 100)
+                    if n_depth >= min_shares:  
+                        pass_gap = True
+                        if gap_filter_enabled and highest_idx != -1:
+                            current_idx = -1
+                            for idx, sm in enumerate(sorted_markets):
+                                if sm['id'] == m['id']:
+                                    current_idx = idx
+                                    break
+                            if current_idx != -1:
+                                diff = current_idx - highest_idx
+                                effective_dir = gap_direction
+                                if m_type == "lowest":
+                                    if gap_direction == "Up": effective_dir = "Down"
+                                    elif gap_direction == "Down": effective_dir = "Up"
+                                
+                                if effective_dir == "Both":
+                                    if abs(diff) <= gap_value: pass_gap = False
+                                elif effective_dir == "Up":
+                                    if diff <= gap_value: pass_gap = False
+                                elif effective_dir == "Down":
+                                    if diff >= -gap_value: pass_gap = False
+                        
+                        if pass_gap:
+                            is_match = True
+                            matched_price = min(matched_price, no_price * 100)
 
                 if is_match:
                     event_has_match = True
@@ -264,7 +275,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             error_cities.append(city["name"])
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
+async def run_scan(min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_value, gap_direction, min_shares, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
@@ -283,7 +294,7 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
             if not isinstance(m_types, list): m_types = [m_types]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_value, gap_direction, min_shares, matches_list, filtered_cities, error_cities))
         await asyncio.gather(*tasks)
     return matches_list, list(set(filtered_cities)), list(set(error_cities))
 
@@ -346,39 +357,37 @@ with st.container():
         "EXCLUDE CITIES (BLACKLIST)", 
         exclude_options, 
         default=[c for c in st.session_state.excluded_cities if c in exclude_options],
-        help="Select cities that you want to completely skip and ignore during the API scan sequence."
     )
     st.session_state.excluded_cities = excluded_cities
     
     preset_col1, preset_col2, preset_col3, preset_col4 = st.columns([1.5, 1.5, 1, 1.5])
     with preset_col1:
-        if st.button("Morning Cities", use_container_width=True, help="Automatically load preset cities optimized for the morning trading shift."): 
+        if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
             save_stored_data()
             st.rerun()
     with preset_col2:
-        if st.button("Evening Cities", use_container_width=True, help="Automatically load preset cities optimized for the evening trading shift."):
+        if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
             save_stored_data()
             st.rerun()
     with preset_col3:
-        if st.button("Clear All", use_container_width=True, help="Deselect all chosen cities instantly to rebuild your target list."): 
+        if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
             save_stored_data()
             st.rerun()
     with preset_col4:
-        st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Wipe all checked and ordered market tags to safely begin a brand new execution loop.")
+        st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags)
     
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect(
         "SELECT CITIES TO SCAN", 
         city_names, 
         default=[c for c in st.session_state.selected_cities if c in city_names],
-        help="Choose the specific target cities you want the scanning engine to request data for."
     )
     st.session_state.selected_cities = selected_cities
     
@@ -386,55 +395,37 @@ with st.container():
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
     
     with c1: 
-        selected_dates = st.multiselect(
-            "SELECT DATES", 
-            ["Today", "Tomorrow", "Day After Tomorrow"], 
-            default=saved_dates,
-            help="Choose the target relative dates to crawl weather forecast parameters."
-        )
+        selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
     with c2: 
-        hide_ordered = st.checkbox(
-            "Hide ORDERED markets 🟢", 
-            value=config.get("hide_ordered", False), 
-            key="chk_hide_ordered",
-            help="When turned on, any market marked with the 'Order 🚀' status badge will be hidden from view automatically."
-        )
+        hide_ordered = st.checkbox("Hide ORDERED markets 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered")
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:5px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
-    # UI FLAT VIEW: Standard plain filters layout restored with comprehensive English tooltips
-    st.markdown("<p style='color: #fbcfe8; font-weight: bold; font-size: 1rem; margin-top: 15px; margin-bottom: 5px;'>PRICE FILTER & ALGORTIHM CONFIGURATION</p>", unsafe_allow_html=True)
+    # --- UI LAYOUT FILTER CHO NO & SHARES ---
+    st.markdown("<p style='color: #fbcfe8; font-weight: bold; font-size: 1rem; margin-top: 15px; margin-bottom: 5px;'>PRICE FILTER & ALGORITHM CONFIGURATION</p>", unsafe_allow_html=True)
 
-    y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
-    with y_head_col:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
-        filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes", help="Enable or disable price checks on YES outcome contracts.")
-    with y_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
-        min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed", help="Minimum penny cost bound to flag a valid YES contract match.")
-    with y_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
-        max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed", help="Maximum penny cost bound to flag a valid YES contract match.")
-
-    n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.5, 1.5, 1.0])
+    n_head_col, n_in_col1, n_in_col2, n_shares_col = st.columns([1, 2, 2, 2])
     with n_head_col:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
-        filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no", help="Enable or disable price checks on NO outcome contracts.")
+        filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
     with n_in_col1:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
-        min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed", help="Minimum penny cost bound to flag a valid NO contract match.")
+        min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
     with n_in_col2:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
-        max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed", help="Maximum penny cost bound to flag a valid NO contract match.")
-    with n_gap_col:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
-        gc1, gc2, gc3 = st.columns([0.5, 1, 1.5])
-        with gc1:
-            gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap", help="Toggle the index-gap proximity filtration logic to exclude safe buffer brackets.")
-        with gc2:
-            gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed", help="Define the index delta threshold size relative to the maximum matched location.")
-        with gc3:
-            gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed", help="Specify index direction limits for the gap protection engine.")
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
+        max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
+    with n_shares_col:
+        st.markdown("<p style='font-weight: 600; color: #f472b6; margin-bottom: 5px;'>MIN SHARES (DEPTH)</p>", unsafe_allow_html=True)
+        min_shares = st.number_input("MIN SHARES", min_value=0.0, max_value=1000000.0, value=config.get("min_shares", 100.0), step=10.0, format="%.0f", label_visibility="collapsed", help="Minimum shares depth at the best ask price.")
+
+    # --- GAP ENGINE CONTROLS ---
+    st.markdown("<p style='font-weight: 600; color: #e3b341; margin-top: 10px; margin-bottom: 5px;'>GAP PROTECTION CONFIGURATION (MID-PRICE BASED)</p>", unsafe_allow_html=True)
+    g_chk_col, g_val_col, g_dir_col = st.columns([1, 2, 2])
+    with g_chk_col:
+        gap_filter_enabled = st.checkbox("Enable Gap Filter", value=config.get("gap_filter_enabled", False), key="chk_gap")
+    with g_val_col:
+        gap_value = st.number_input("Gap Bracket Threshold", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1)
+    with g_dir_col:
+        gap_direction = st.selectbox("Gap Direction", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")))
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
@@ -444,9 +435,10 @@ with st.container():
 
 if search_clicked:
     current_config = {
-        "min_p_yes": min_p_yes, "max_p_yes": max_p_yes, "min_p_no": min_p_no, "max_p_no": max_p_no, 
-        "filter_yes": filter_yes, "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
-        "gap_value": gap_value, "gap_direction": gap_direction, "selected_dates": selected_dates, 
+        "min_p_no": min_p_no, "max_p_no": max_p_no, 
+        "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
+        "gap_value": gap_value, "gap_direction": gap_direction, 
+        "min_shares": min_shares, "selected_dates": selected_dates, 
         "selected_cities": selected_cities, "excluded_cities": excluded_cities,
         "hide_ordered": hide_ordered
     }
@@ -454,7 +446,7 @@ if search_clicked:
     save_stored_data()
 
     with st.status("📡 Requesting data arrays from Polymarket API...", expanded=True) as status:
-        res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
+        res, filt, err = asyncio.run(run_scan(min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_value, gap_direction, min_shares, selected_cities, excluded_cities, selected_dates))
         st.session_state.scan_results = {
             "matches": res,
             "filtered": filt,
