@@ -15,7 +15,7 @@ DEFAULT_CONCURRENCY = 20
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
     {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active"},
-    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-techno", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active"},
+    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active"},
     {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active"},
     {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active"},
     {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active"},
@@ -94,9 +94,7 @@ DEFAULT_CONFIG = {
     "hide_ordered": False
 }
 
-# --- NATIVE STORAGE HELPERS (100% ISOLATED PER USER TAB) ---
 def save_stored_data():
-    # Không cần ghi file rác lên server, st.session_state tự động cô lập cho từng user tab cực kỳ an toàn
     pass
 
 # --- CALLBACK FUNCTIONS ---
@@ -292,10 +290,8 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# Native top anchor for Streamlit's router scroll
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
-# Khởi tạo trực tiếp vào Session State độc lập cho từng Tab máy khách
 if "current_config" not in st.session_state:
     st.session_state.current_config = DEFAULT_CONFIG.copy()
     st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
@@ -306,7 +302,7 @@ if "current_config" not in st.session_state:
 
 config = st.session_state.current_config
 
-# Custom Elysia Aesthetic (Beautiful dark magenta-pink theme ✨)
+# Giao diện Elysia Theme (Hồng - Đen cực chất ✨)
 st.markdown("""
 <style>
     .main, .stApp { background-color: #120b0e; }
@@ -321,7 +317,6 @@ st.markdown("""
     .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }
     .depth-text { color: #9d8590; font-size: 0.7rem; margin-top: 2px; }
     
-    /* Back to Top CSS Button Style */
     a[href="#top"] {
         position: fixed;
         bottom: 70px;
@@ -336,12 +331,19 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(236,72,153,0.4);
         transition: background 0.3s ease;
     }
-    a[href="#top"]:hover {
-        background-color: #f43f5e;
-        text-decoration: none;
-    }
+    a[href="#top"]:hover { background-color: #f43f5e; text-decoration: none; }
 </style>
 """, unsafe_allow_html=True)
+
+# UI CẢI TIẾN 1: Hướng dẫn nhanh cho bạn bè ở ngay đầu trang
+with st.expander("📖 HƯỚNG DẪN NHANH ĐỂ SNIPER MARKET THỜI TIẾT (QUICK GUIDE)"):
+    st.markdown("""
+    1. **Chọn Thành Phố & Ngày:** Thêm bớt danh sách các thành phố muốn quét hoặc chọn nhanh bằng các nút preset (Morning/Evening).
+    2. **Tìm kiếm:** Nhấp vào nút **Search Markets** màu hồng lớn ở dưới để công cụ tự động quét API Polymarket theo thời gian thực.
+    3. **Hành động nhanh:** * Bấm **Checked ✔** để đánh dấu các cặp đang theo dõi (sẽ đổi màu vàng).
+        * Bấm **Order 🚀** để đánh dấu lệnh đã khớp/đặt lệnh (sẽ đổi màu xanh lá).
+        * Bấm **Copy Link** để lấy nhanh link và bay thẳng sang Polymarket đặt lệnh!
+    """)
 
 with st.container():
     st.markdown('<div class="filter-box">', unsafe_allow_html=True)
@@ -350,31 +352,36 @@ with st.container():
     st.session_state.selected_cities = [c for c in st.session_state.selected_cities if c not in st.session_state.excluded_cities]
 
     exclude_options = [c for c in all_city_names if c not in st.session_state.selected_cities]
-    excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
+    excluded_cities = st.multiselect(
+        "EXCLUDE CITIES (BLACKLIST)", 
+        exclude_options, 
+        default=[c for c in st.session_state.excluded_cities if c in exclude_options],
+        help="Danh sách các thành phố bạn muốn loại bỏ vĩnh viễn không bao giờ quét."
+    )
     st.session_state.excluded_cities = excluded_cities
     
     preset_col1, preset_col2, preset_col3, preset_col4 = st.columns([1.5, 1.5, 1, 1.5])
     with preset_col1:
-        if st.button("Morning Cities", use_container_width=True): 
+        if st.button("Morning Cities", use_container_width=True, help="Quét danh sách thành phố phiên Sáng."): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
             save_stored_data()
             st.rerun()
     with preset_col2:
-        if st.button("Evening Cities", use_container_width=True):
+        if st.button("Evening Cities", use_container_width=True, help="Quét danh sách thành phố phiên Tối."):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
             save_stored_data()
             st.rerun()
     with preset_col3:
-        if st.button("Clear All", use_container_width=True): 
+        if st.button("Clear All", use_container_width=True, help="Xóa nhanh tất cả thành phố đang chọn."): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
             save_stored_data()
             st.rerun()
     with preset_col4:
-        st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Clear all checked and ordered market flags for a new trading cycle.")
+        st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Xóa sạch các cờ Checked/Ordered đã đánh dấu để bắt đầu một vòng trade mới.")
     
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
@@ -385,44 +392,48 @@ with st.container():
     
     with c1: selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
     with c2: 
-        hide_ordered = st.checkbox("Hide ORDERED markets 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered")
+        hide_ordered = st.checkbox("Hide ORDERED markets 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered", help="Ẩn các market đã bấm nút Order để màn hình đỡ rối mắt.")
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:5px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
-    y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
-    with y_head_col:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
-        filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes")
-    with y_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
-        min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with y_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
-        max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
+    # UI CẢI TIẾN 2: Gom các thông số thuật toán phức tạp vào một bộ lọc mở rộng nâng cao
+    with st.expander("🎛️ BỘ LỌC GIÁ NÂNG CAO & GAP FILTER ALGORITHM", expanded=False):
+        st.markdown("<p style='color: #fbcfe8; font-size: 0.85rem;'>Tùy chỉnh khoảng giá trị (¢) và thuật toán lọc nhiễu khoảng trống đầu ra.</p>", unsafe_allow_html=True)
+        
+        y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
+        with y_head_col:
+            st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
+            filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes")
+        with y_in_col1:
+            st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
+            min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
+        with y_in_col2:
+            st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
+            max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
 
-    n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.5, 1.5, 1.0])
-    with n_head_col:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
-        filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
-    with n_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
-        min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with n_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
-        max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
-    with n_gap_col:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
-        gc1, gc2, gc3 = st.columns([0.5, 1, 1.5])
-        with gc1:
-            gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap")
-        with gc2:
-            gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
-        with gc3:
-            gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed")
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
+        n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.5, 1.5, 1.0])
+        with n_head_col:
+            st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
+            filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
+        with n_in_col1:
+            st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
+            min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
+        with n_in_col2:
+            st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
+            max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
+        with n_gap_col:
+            st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
+            gc1, gc2, gc3 = st.columns([0.5, 1, 1.5])
+            with gc1:
+                gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap")
+            with gc2:
+                gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
+            with gc3:
+                gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed")
+            st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
     
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
-    with col_msg: st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>Settings apply to the current active session.</p>", unsafe_allow_html=True)
+    with col_msg: st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>Cài đặt áp dụng độc lập cho phiên trình duyệt của bạn.</p>", unsafe_allow_html=True)
     with col_btn: search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -437,13 +448,15 @@ if search_clicked:
     st.session_state.current_config = current_config
     save_stored_data()
 
-    with st.spinner("Finding markets..."):
+    # UI CẢI TIẾN 3: Đổi spinner thông thường thành thanh trạng thái động nhìn chuyên nghiệp hơn
+    with st.status("📡 Đang kết nối API Polymarket & quét dữ liệu...", expanded=True) as status:
         res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
         st.session_state.scan_results = {
             "matches": res,
             "filtered": filt,
             "errors": err
         }
+        status.update(label="✅ Đã quét xong toàn bộ dữ liệu!", state="complete", expanded=False)
 
 if st.session_state.scan_results is not None:
     scan_data = st.session_state.scan_results
@@ -547,7 +560,6 @@ if st.session_state.scan_results is not None:
                     row = event_markets.iloc[0]
                     safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
                     
-                    # Inside Iframe: Elysia Pink Pink Button Style & Seamless Inline Text Feedback 💖
                     row_html = f"""
                     <!DOCTYPE html>
                     <html>
