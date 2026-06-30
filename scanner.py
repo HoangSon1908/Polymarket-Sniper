@@ -6,20 +6,16 @@ import pandas as pd
 import re
 import os
 from datetime import datetime, timedelta
-from streamlit_local_storage import LocalStorage
 
 # --- CONSTANTS ---
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
 
-# Khởi tạo đối tượng LocalStorage để giao tiếp với trình duyệt người dùng
-local_storage = LocalStorage()
-
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": "highest", "status": "active"},
     {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": "highest", "status": "active"},
-    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active"},
+    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-techno", "polymarketCity": "san-francisco", "marketType": "highest", "status": "active"},
     {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": "highest", "status": "active"},
     {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": "highest", "status": "active"},
     {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": "highest", "status": "active"},
@@ -98,31 +94,10 @@ DEFAULT_CONFIG = {
     "hide_ordered": False
 }
 
-# --- LOCAL STORAGE HELPERS ---
-def load_stored_data():
-    try:
-        stored_json = local_storage.getItem("poly_weather_config")
-        if stored_json:
-            return json.loads(stored_json)
-    except Exception:
-        pass
-    return {
-        "config": DEFAULT_CONFIG.copy(),
-        "ordered_markets": [],
-        "checked_markets": []
-    }
-
+# --- NATIVE STORAGE HELPERS (100% ISOLATED PER USER TAB) ---
 def save_stored_data():
-    data_to_save = {
-        "config": st.session_state.current_config,
-        "ordered_markets": st.session_state.ordered_markets,
-        "checked_markets": st.session_state.checked_markets
-    }
-    try:
-        # Sử dụng chính xác chữ I viết hoa (setItem) theo quy định thư viện
-        local_storage.setItem("poly_weather_config", json.dumps(data_to_save, ensure_ascii=False))
-    except Exception as e:
-        st.error(f"Browser Storage Write Error: {e}")
+    # Không cần ghi file rác lên server, st.session_state tự động cô lập cho từng user tab cực kỳ an toàn
+    pass
 
 # --- CALLBACK FUNCTIONS ---
 def toggle_ordered_status(event_title):
@@ -320,15 +295,13 @@ st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", lay
 # Native top anchor for Streamlit's router scroll
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
-# Khởi tạo Session State từ Local Storage
-stored_data = load_stored_data()
-
+# Khởi tạo trực tiếp vào Session State độc lập cho từng Tab máy khách
 if "current_config" not in st.session_state:
-    st.session_state.current_config = stored_data.get("config", DEFAULT_CONFIG.copy())
+    st.session_state.current_config = DEFAULT_CONFIG.copy()
     st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
-    st.session_state.ordered_markets = stored_data.get("ordered_markets", [])
-    st.session_state.checked_markets = stored_data.get("checked_markets", [])
+    st.session_state.ordered_markets = []
+    st.session_state.checked_markets = []
     st.session_state.scan_results = None
 
 config = st.session_state.current_config
