@@ -79,13 +79,13 @@ MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "
 
 DEFAULT_CONFIG = {
     "min_p_yes": 80.0,
-    "max_p_yes": 99.5,
+    "max_p_yes": 99.7,
     "min_p_no": 90.0,
-    "max_p_no": 99.5,
+    "max_p_no": 99.7,
     "filter_yes": False,
     "filter_no": True,
     "gap_filter_enabled": True,
-    "gap_value": 5,
+    "gap_value": 4,
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
