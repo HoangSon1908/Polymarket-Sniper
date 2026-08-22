@@ -85,7 +85,7 @@ DEFAULT_CONFIG = {
     "max_spread": 5.0,
     "gap_filter_enabled": True,
     "gap_top_k": 2,
-    "gap_value": 3,
+    "gap_value": 4,
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
