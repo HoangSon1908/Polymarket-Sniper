@@ -14,7 +14,7 @@ DEFAULT_CONCURRENCY = 20
 STORAGE_FILE = "storage_config.json"  # Server Storage Config
 
 CITIES_DATA = [
-   {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": ["highest", "lowest"], "status": "active"},
     {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": ["highest", "lowest"], "status": "active"},
     {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": ["highest", "lowest"], "status": "active"},
     {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": ["highest", "lowest"], "status": "active"},
@@ -78,12 +78,11 @@ DEFAULT_FAVORITE_CITIES = [
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 DEFAULT_CONFIG = {
-    "min_p_yes": 80.0,
-    "max_p_yes": 99.7,
     "min_p_no": 90.0,
     "max_p_no": 99.7,
-    "filter_yes": False,
     "filter_no": True,
+    "spread_filter_enabled": True,
+    "max_spread": 5.0,
     "gap_filter_enabled": True,
     "gap_value": 4,
     "gap_direction": "Both",
@@ -169,7 +168,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spread, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -242,11 +241,12 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                 is_match = False
                 matched_price = 100.0
                 
-                if filter_yes and (min_p_yes/100) <= yes_price <= (max_p_yes/100):
-                    is_match = True
-                    matched_price = min(matched_price, yes_price * 100)
-                
                 if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
+                    pass_spread = True
+                    # Kiểm tra bộ lọc Spread
+                    if spread_filter_enabled and spread > max_spread:
+                        pass_spread = False
+
                     pass_gap = True
                     if gap_filter_enabled and highest_idx != -1:
                         current_idx = -1
@@ -268,9 +268,9 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
                             elif effective_dir == "Down":
                                 if diff >= -gap_value: pass_gap = False
                     
-                    if pass_gap:
+                    if pass_spread and pass_gap:
                         is_match = True
-                        matched_price = min(matched_price, no_price * 100)
+                        matched_price = no_price * 100
 
                 if is_match:
                     event_has_match = True
@@ -288,7 +288,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_yes, ma
         except Exception:
             error_cities.append(city["name"])
 
-async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
+async def run_scan(min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spread, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
@@ -303,18 +303,18 @@ async def run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_
     async with aiohttp.ClientSession() as session:
         tasks = []
         for city in cities_to_scan:
-            m_types = city.get("marketType")
-            if not isinstance(m_types, list): m_types = [m_types]
+            m_types = city.get("marketType", ["highest", "lowest"])
+            if not isinstance(m_types, list): 
+                m_types = [m_types]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spread, gap_filter_enabled, gap_value, gap_direction, matches_list, filtered_cities, error_cities))
         await asyncio.gather(*tasks)
     return matches_list, list(set(filtered_cities)), list(set(error_cities))
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Market Finder", page_icon="🎯", layout="wide")
 
-# Native top anchor for Streamlit's router scroll
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
 if "config_loaded" not in st.session_state:
@@ -329,7 +329,6 @@ if "config_loaded" not in st.session_state:
 
 config = st.session_state.current_config
 
-# Custom Elysia Aesthetic (Beautiful dark magenta-pink theme ✨)
 st.markdown("""
 <style>
     .main, .stApp { background-color: #120b0e; }
@@ -344,7 +343,6 @@ st.markdown("""
     .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }
     .depth-text { color: #9d8590; font-size: 0.7rem; margin-top: 2px; }
     
-    /* Back to Top CSS Button Style */
     a[href="#top"] {
         position: fixed;
         bottom: 70px;
@@ -411,34 +409,39 @@ with st.container():
         hide_ordered = st.checkbox("Hide ORDERED markets 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered")
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:5px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
-    y_head_col, y_in_col1, y_in_col2 = st.columns([1, 2, 2])
-    with y_head_col:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>SCAN YES</p>", unsafe_allow_html=True)
-        filter_yes = st.checkbox("Yes", value=config.get("filter_yes", True), label_visibility="collapsed", key="chk_yes")
-    with y_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MIN YES (¢)</p>", unsafe_allow_html=True)
-        min_p_yes = st.number_input("MIN YES", min_value=0.0, max_value=100.0, value=config.get("min_p_yes", 80.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with y_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #3fb950; margin-bottom: 5px;'>MAX YES (¢)</p>", unsafe_allow_html=True)
-        max_p_yes = st.number_input("MAX YES", min_value=0.0, max_value=100.0, value=config.get("max_p_yes", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
-
-    n_head_col, n_in_col1, n_in_col2, n_gap_col = st.columns([1, 1.5, 1.5, 1.0])
-    with n_head_col:
+    # --- KHU VỰC CÁC BỘ LỌC CHI TIẾT (NO, SPREAD, GAP) ---
+    col_no, col_spread, col_gap = st.columns([2.2, 1.8, 2.0])
+    
+    # 1. Bộ lọc SCAN NO
+    with col_no:
         st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
-        filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
-    with n_in_col1:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MIN NO (¢)</p>", unsafe_allow_html=True)
-        min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 98.0), step=0.1, format="%.1f", label_visibility="collapsed")
-    with n_in_col2:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>MAX NO (¢)</p>", unsafe_allow_html=True)
-        max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.9), step=0.1, format="%.1f", label_visibility="collapsed")
-    with n_gap_col:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
-        gc1, gc2, gc3 = st.columns([0.5, 1, 1.5])
+        no_c1, no_c2, no_c3 = st.columns([0.6, 1.2, 1.2])
+        with no_c1:
+            filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
+        with no_c2:
+            min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed")
+        with no_c3:
+            max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed")
+        st.markdown("<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>Price range for NO</p>", unsafe_allow_html=True)
+
+    # 2. Bộ lọc SPREAD FILTER mới
+    with col_spread:
+        st.markdown("<p style='font-weight: 600; color: #f472b6; margin-bottom: 5px;'>SPREAD FILTER</p>", unsafe_allow_html=True)
+        sp_c1, sp_c2 = st.columns([0.6, 1.8])
+        with sp_c1:
+            spread_filter_enabled = st.checkbox("", value=config.get("spread_filter_enabled", True), key="chk_spread")
+        with sp_c2:
+            max_spread = st.number_input("Max Spread", min_value=0.0, max_value=50.0, value=float(config.get("max_spread", 5.0)), step=0.5, format="%.1f", label_visibility="collapsed")
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Max diff ≤ {max_spread}¢)</p>", unsafe_allow_html=True)
+
+    # 3. Bộ lọc GAP FILTER
+    with col_gap:
+        st.markdown("<p style='font-weight: 600; color: #e3b341; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
+        gc1, gc2, gc3 = st.columns([0.5, 1.0, 1.5])
         with gc1:
             gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", False), key="chk_gap")
         with gc2:
-            gap_value = st.number_input("Gap", min_value=1, max_value=10, value=config.get("gap_value", 3), step=1, label_visibility="collapsed")
+            gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("gap_value", 4)), step=1, label_visibility="collapsed")
         with gc3:
             gap_direction = st.selectbox("Dir", ["Both", "Up", "Down"], index=["Both", "Up", "Down"].index(config.get("gap_direction", "Both")), label_visibility="collapsed")
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Skip {gap_value} {gap_direction})</p>", unsafe_allow_html=True)
@@ -451,17 +454,22 @@ with st.container():
 
 if search_clicked:
     current_config = {
-        "min_p_yes": min_p_yes, "max_p_yes": max_p_yes, "min_p_no": min_p_no, "max_p_no": max_p_no, 
-        "filter_yes": filter_yes, "filter_no": filter_no, "gap_filter_enabled": gap_filter_enabled, 
-        "gap_value": gap_value, "gap_direction": gap_direction, "selected_dates": selected_dates, 
-        "selected_cities": selected_cities, "excluded_cities": excluded_cities,
+        "min_p_no": min_p_no, "max_p_no": max_p_no, "filter_no": filter_no,
+        "spread_filter_enabled": spread_filter_enabled, "max_spread": max_spread,
+        "gap_filter_enabled": gap_filter_enabled, "gap_value": gap_value, "gap_direction": gap_direction,
+        "selected_dates": selected_dates, "selected_cities": selected_cities, "excluded_cities": excluded_cities,
         "hide_ordered": hide_ordered
     }
     st.session_state.current_config = current_config
     save_stored_data()
 
     with st.spinner("Finding markets..."):
-        res, filt, err = asyncio.run(run_scan(min_p_yes, max_p_yes, min_p_no, max_p_no, filter_yes, filter_no, gap_filter_enabled, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates))
+        res, filt, err = asyncio.run(run_scan(
+            min_p_no, max_p_no, filter_no,
+            spread_filter_enabled, max_spread,
+            gap_filter_enabled, gap_value, gap_direction,
+            selected_cities, excluded_cities, selected_dates
+        ))
         st.session_state.scan_results = {
             "matches": res,
             "filtered": filt,
@@ -570,7 +578,6 @@ if st.session_state.scan_results is not None:
                     row = event_markets.iloc[0]
                     safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
                     
-                    # Inside Iframe: Elysia Pink Pink Button Style & Seamless Inline Text Feedback 💖
                     row_html = f"""
                     <!DOCTYPE html>
                     <html>
