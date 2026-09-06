@@ -82,7 +82,7 @@ DEFAULT_CONFIG = {
     "max_p_no": 99.7,
     "filter_no": True,
     "spread_filter_enabled": True,
-    "max_spread": 5.0,
+    "max_spread": 10.0,
     "gap_filter_enabled": True,
     "gap_top_k": 2,
     "gap_value": 4,
