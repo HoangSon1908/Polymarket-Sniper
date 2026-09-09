@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
     "gap_direction": "Both",
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul", "Munich"],
+    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
     "ordered_markets": [],
     "checked_markets": [],
     "hide_ordered": False
