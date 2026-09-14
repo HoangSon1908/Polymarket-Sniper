@@ -206,7 +206,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
             books = {b["asset_id"]: b for b in books_data}
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-            # --- TÌM TOP K BRACKET CÓ GIÁ YES CAO NHẤT ---
+# --- TÌM TOP K BRACKET CÓ GIÁ SELL YES CAO NHẤT (BEST BID) ---
             top_bracket_indices = []
             if gap_filter_enabled:
                 market_yes_candidates = []
@@ -215,12 +215,16 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
                     if len(tokens) < 2: continue
                     y_id = tokens[0]
                     y_book = books.get(y_id, {})
-                    y_asks = y_book.get("asks", [])
-                    if not y_asks: continue
-                    y_p = float(min(y_asks, key=lambda x: float(x["price"]))["price"])
-                    market_yes_candidates.append((i, y_p))
+                    
+                    # Lấy danh sách bids của token YES
+                    y_bids = y_book.get("bids", [])
+                    if not y_bids: continue
+                    
+                    # Giá Sell YES = Bid cao nhất mà người mua đang đặt
+                    y_sell_p = float(max(y_bids, key=lambda x: float(x["price"]))["price"])
+                    market_yes_candidates.append((i, y_sell_p))
                 
-                # Sắp xếp giảm dần theo giá YES và lấy top K
+                # Sắp xếp giảm dần theo giá Sell YES và lấy top K bracket
                 market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
                 top_bracket_indices = [item[0] for item in market_yes_candidates[:gap_top_k]]
             
@@ -453,7 +457,7 @@ with st.container():
         with gc1:
             gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", True), key="chk_gap")
         with gc2:
-            gap_top_k = st.number_input("Top", min_value=1, max_value=5, value=int(config.get("gap_top_k", 2)), step=1, help="Số lượng bracket có giá YES cao nhất cần né", label_visibility="collapsed")
+            gap_top_k = st.number_input("Top", min_value=1, max_value=5, value=int(config.get("gap_top_k", 2)), step=1, help="Số lượng bracket có giá Sell YES cao nhất cần né", label_visibility="collapsed")
         with gc3:
             gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("gap_value", 3)), step=1, help="Khoảng cách ô tối thiểu cần né", label_visibility="collapsed")
         with gc4:
