@@ -81,8 +81,6 @@ DEFAULT_CONFIG = {
     "min_p_no": 90.0,
     "max_p_no": 99.7,
     "filter_no": True,
-    "spread_filter_enabled": True,
-    "max_spread": 10.0,
     "gap_filter_enabled": True,
     "gap_top_k": 2,
     "gap_value": 4,
@@ -169,7 +167,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spread, gap_filter_enabled, gap_top_k, gap_value, gap_direction, matches_list, filtered_cities, error_cities):
+async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k, gap_value, gap_direction, matches_list, filtered_cities, error_cities):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -206,7 +204,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
             books = {b["asset_id"]: b for b in books_data}
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-# --- TÌM TOP K BRACKET CÓ GIÁ SELL YES CAO NHẤT (BEST BID) ---
+            # --- TÌM TOP K BRACKET CÓ GIÁ SELL YES CAO NHẤT (BEST BID) ---
             top_bracket_indices = []
             if gap_filter_enabled:
                 market_yes_candidates = []
@@ -250,10 +248,6 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
                 matched_price = 100.0
                 
                 if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
-                    pass_spread = True
-                    if spread_filter_enabled and spread > max_spread:
-                        pass_spread = False
-
                     pass_gap = True
                     if gap_filter_enabled and top_bracket_indices:
                         current_idx = -1
@@ -284,7 +278,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
                                         pass_gap = False
                                         break
                     
-                    if pass_spread and pass_gap:
+                    if pass_gap:
                         is_match = True
                         matched_price = no_price * 100
 
@@ -304,7 +298,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
         except Exception:
             error_cities.append(city["name"])
 
-async def run_scan(min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spread, gap_filter_enabled, gap_top_k, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
+async def run_scan(min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k, gap_value, gap_direction, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
@@ -324,7 +318,7 @@ async def run_scan(min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spr
                 m_types = [m_types]
             for d in dates:
                 for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_no, max_p_no, filter_no, spread_filter_enabled, max_spread, gap_filter_enabled, gap_top_k, gap_value, gap_direction, matches_list, filtered_cities, error_cities))
+                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k, gap_value, gap_direction, matches_list, filtered_cities, error_cities))
         await asyncio.gather(*tasks)
     return matches_list, list(set(filtered_cities)), list(set(error_cities))
 
@@ -425,8 +419,8 @@ with st.container():
         hide_ordered = st.checkbox("Hide ORDERED markets 🟢", value=config.get("hide_ordered", False), key="chk_hide_ordered")
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:5px'>Markets are scanned for all types (Highest & Lowest).</p>", unsafe_allow_html=True)
 
-    # --- KHU VỰC CÁC BỘ LỌC CHI TIẾT (NO, SPREAD, MULTI-GAP) ---
-    col_no, col_spread, col_gap = st.columns([1.8, 1.6, 2.6])
+    # --- KHU VỰC CÁC BỘ LỌC CHI TIẾT (NO & GAP FILTER) ---
+    col_no, col_gap = st.columns([2, 3])
     
     # 1. Bộ lọc SCAN NO
     with col_no:
@@ -440,17 +434,7 @@ with st.container():
             max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed")
         st.markdown("<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>Price range for NO</p>", unsafe_allow_html=True)
 
-    # 2. Bộ lọc SPREAD FILTER
-    with col_spread:
-        st.markdown("<p style='font-weight: 600; color: #f472b6; margin-bottom: 5px;'>SPREAD FILTER</p>", unsafe_allow_html=True)
-        sp_c1, sp_c2 = st.columns([0.6, 1.8])
-        with sp_c1:
-            spread_filter_enabled = st.checkbox("", value=config.get("spread_filter_enabled", True), key="chk_spread")
-        with sp_c2:
-            max_spread = st.number_input("Max Spread", min_value=0.0, max_value=50.0, value=float(config.get("max_spread", 5.0)), step=0.5, format="%.1f", label_visibility="collapsed")
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Max diff ≤ {max_spread}¢)</p>", unsafe_allow_html=True)
-
-    # 3. Bộ lọc GAP FILTER (Hỗ trợ Top K Brackets)
+    # 2. Bộ lọc GAP FILTER (Hỗ trợ Top K Brackets)
     with col_gap:
         st.markdown("<p style='font-weight: 600; color: #e3b341; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
         gc1, gc2, gc3, gc4 = st.columns([0.4, 0.9, 0.9, 1.2])
@@ -473,7 +457,6 @@ with st.container():
 if search_clicked:
     current_config = {
         "min_p_no": min_p_no, "max_p_no": max_p_no, "filter_no": filter_no,
-        "spread_filter_enabled": spread_filter_enabled, "max_spread": max_spread,
         "gap_filter_enabled": gap_filter_enabled, "gap_top_k": gap_top_k, "gap_value": gap_value, "gap_direction": gap_direction,
         "selected_dates": selected_dates, "selected_cities": selected_cities, "excluded_cities": excluded_cities,
         "hide_ordered": hide_ordered
@@ -484,7 +467,6 @@ if search_clicked:
     with st.spinner("Finding markets..."):
         res, filt, err = asyncio.run(run_scan(
             min_p_no, max_p_no, filter_no,
-            spread_filter_enabled, max_spread,
             gap_filter_enabled, gap_top_k, gap_value, gap_direction,
             selected_cities, excluded_cities, selected_dates
         ))
