@@ -78,14 +78,26 @@ DEFAULT_FAVORITE_CITIES = [
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 DEFAULT_CONFIG = {
-    "min_p_no": 90.0,
-    "max_p_no": 99.7,
-    "filter_no": True,
-    "gap_filter_enabled": True,
-    "gap_top_k": 2,
-    "gap_value": 4,
+    # Cài đặt cho Highest
+    "scan_highest": True,
+    "h_min_p_no": 90.0,
+    "h_max_p_no": 99.7,
+    "h_filter_no": True,
+    "h_gap_filter_enabled": True,
+    "h_gap_top_k": 2,
+    "h_gap_value": 4,
+
+    # Cài đặt cho Lowest
+    "scan_lowest": True,
+    "l_min_p_no": 90.0,
+    "l_max_p_no": 99.7,
+    "l_filter_no": True,
+    "l_gap_filter_enabled": True,
+    "l_gap_top_k": 2,
+    "l_gap_value": 4,
+
+    # Dùng chung
     "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
-    "selected_market_types": ["Highest", "Lowest"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
     "ordered_markets": [],
@@ -97,7 +109,14 @@ def load_stored_data():
     if os.path.exists(STORAGE_FILE):
         try:
             with open(STORAGE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                saved = json.load(f)
+                cfg = DEFAULT_CONFIG.copy()
+                cfg.update(saved.get("config", {}))
+                return {
+                    "config": cfg,
+                    "ordered_markets": saved.get("ordered_markets", []),
+                    "checked_markets": saved.get("checked_markets", [])
+                }
         except Exception:
             pass
     return {
@@ -166,7 +185,7 @@ def get_target_dates(selected_date_labels):
             })
     return dates
 
-async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k, gap_value, matches_list, filtered_cities, error_cities):
+async def check_event(session, semaphore, city, date_info, m_type, type_cfg, matches_list, filtered_cities, error_cities):
     async with semaphore:
         slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
         try:
@@ -205,7 +224,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
 
             # --- TÌM TOP K BRACKET CÓ GIÁ SELL YES CAO NHẤT (BEST BID) ---
             top_bracket_indices = []
-            if gap_filter_enabled:
+            if type_cfg["gap_filter_enabled"]:
                 market_yes_candidates = []
                 for i, m in enumerate(sorted_markets):
                     tokens = json.loads(m.get("clobTokenIds", "[]"))
@@ -220,7 +239,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
                     market_yes_candidates.append((i, y_sell_p))
                 
                 market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
-                top_bracket_indices = [item[0] for item in market_yes_candidates[:gap_top_k]]
+                top_bracket_indices = [item[0] for item in market_yes_candidates[:type_cfg["gap_top_k"]]]
             
             event_has_match = False
             for yes_id, info in market_map.items():
@@ -243,9 +262,9 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
                 is_match = False
                 matched_price = 100.0
                 
-                if filter_no and (min_p_no/100) <= no_price <= (max_p_no/100):
+                if type_cfg["filter_no"] and (type_cfg["min_p_no"]/100) <= no_price <= (type_cfg["max_p_no"]/100):
                     pass_gap = True
-                    if gap_filter_enabled and top_bracket_indices:
+                    if type_cfg["gap_filter_enabled"] and top_bracket_indices:
                         current_idx = -1
                         for idx, sm in enumerate(sorted_markets):
                             if sm['id'] == m['id']:
@@ -253,9 +272,8 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
                                 break
                         
                         if current_idx != -1:
-                            # Cố định chỉ dùng Both: né cả 2 phía khoảng cách gap_value
                             for ref_idx in top_bracket_indices:
-                                if abs(current_idx - ref_idx) <= gap_value:
+                                if abs(current_idx - ref_idx) <= type_cfg["gap_value"]:
                                     pass_gap = False
                                     break
                     
@@ -279,7 +297,7 @@ async def check_event(session, semaphore, city, date_info, m_type, min_p_no, max
         except Exception:
             error_cities.append(city["name"])
 
-async def run_scan(min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k, gap_value, selected_cities, excluded_cities, selected_dates, selected_market_types):
+async def run_scan(highest_cfg, lowest_cfg, selected_cities, excluded_cities, selected_dates):
     cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
     if excluded_cities:
         cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
@@ -287,22 +305,22 @@ async def run_scan(min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k,
         cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
         
     dates = get_target_dates(selected_dates)
-    target_types = [t.lower() for t in selected_market_types] if selected_market_types else ["highest", "lowest"]
-    
     matches_list = []
     filtered_cities = []
     error_cities = []
     semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
+    
     async with aiohttp.ClientSession() as session:
         tasks = []
         for city in cities_to_scan:
             m_types = city.get("marketType", ["highest", "lowest"])
             if not isinstance(m_types, list): 
                 m_types = [m_types]
-            m_types = [mt for mt in m_types if mt.lower() in target_types]
             for d in dates:
-                for mt in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, mt, min_p_no, max_p_no, filter_no, gap_filter_enabled, gap_top_k, gap_value, matches_list, filtered_cities, error_cities))
+                if highest_cfg["enabled"] and "highest" in m_types:
+                    tasks.append(check_event(session, semaphore, city, d, "highest", highest_cfg, matches_list, filtered_cities, error_cities))
+                if lowest_cfg["enabled"] and "lowest" in m_types:
+                    tasks.append(check_event(session, semaphore, city, d, "lowest", lowest_cfg, matches_list, filtered_cities, error_cities))
         await asyncio.gather(*tasks)
     return matches_list, list(set(filtered_cities)), list(set(error_cities))
 
@@ -328,9 +346,9 @@ st.markdown("""
     .main, .stApp { background-color: #120b0e; }
     header { background-color: #1c1116 !important; border-bottom: 1px solid #4a2335; }
     .filter-box { background-color: #1c1116; padding: 20px; border-radius: 12px; border: 1px solid #4a2335; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(236,72,153,0.1); }
+    .type-panel { background-color: #170d12; border: 1px solid #3d1b2b; border-radius: 10px; padding: 15px; margin-top: 5px; }
     .result-card { background-color: #1c1116; border: 1px solid #4a2335; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(236,72,153,0.05); }
     .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
-    .event-box { border-top: 1px solid #4a2335; padding-top: 10px; margin-top: 10px; }
     
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
     .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
@@ -395,42 +413,64 @@ with st.container():
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
     
-    c1, c2 = st.columns([1, 1])
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
-    saved_types = config.get("selected_market_types", ["Highest", "Lowest"])
-    
-    with c1: 
-        selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
-    with c2: 
-        selected_market_types = st.multiselect("SELECT MARKET TYPES", ["Highest", "Lowest"], default=saved_types)
+    selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
 
-    # --- KHU VỰC CÁC BỘ LỌC CHI TIẾT (NO & GAP FILTER) ---
-    col_no, col_gap = st.columns([2, 3])
-    
-    # 1. Bộ lọc SCAN NO
-    with col_no:
-        st.markdown("<p style='font-weight: 600; color: #f85149; margin-bottom: 5px;'>SCAN NO</p>", unsafe_allow_html=True)
-        no_c1, no_c2, no_c3 = st.columns([0.6, 1.2, 1.2])
-        with no_c1:
-            filter_no = st.checkbox("No", value=config.get("filter_no", True), label_visibility="collapsed", key="chk_no")
-        with no_c2:
-            min_p_no = st.number_input("MIN NO", min_value=0.0, max_value=100.0, value=config.get("min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed")
-        with no_c3:
-            max_p_no = st.number_input("MAX NO", min_value=0.0, max_value=100.0, value=config.get("max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed")
-        st.markdown("<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>Price range for NO</p>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: 1px solid #3d1b2b; margin: 15px 0;'>", unsafe_allow_html=True)
 
-    # 2. Bộ lọc GAP FILTER (Cố định Both)
-    with col_gap:
-        st.markdown("<p style='font-weight: 600; color: #e3b341; margin-bottom: 5px;'>GAP FILTER</p>", unsafe_allow_html=True)
-        gc1, gc2, gc3 = st.columns([0.4, 1.3, 1.3])
-        with gc1:
-            gap_filter_enabled = st.checkbox("", value=config.get("gap_filter_enabled", True), key="chk_gap")
-        with gc2:
-            gap_top_k = st.number_input("Top", min_value=1, max_value=5, value=int(config.get("gap_top_k", 2)), step=1, help="Số lượng bracket có giá Sell YES cao nhất cần né", label_visibility="collapsed")
-        with gc3:
-            gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("gap_value", 4)), step=1, help="Khoảng cách ô tối thiểu cần né (cả 2 phía)", label_visibility="collapsed")
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-10px'>(Skip ±{gap_value} brackets from Top {gap_top_k})</p>", unsafe_allow_html=True)
+    # --- KHU VỰC TÁCH BẠCH BỘ LỌC HIGHEST VÀ LOWEST ---
+    col_high, col_low = st.columns(2)
     
+    # 1. BẢNG ĐIỀU KHIỂN HIGHEST
+    with col_high:
+        st.markdown('<div class="type-panel">', unsafe_allow_html=True)
+        scan_highest = st.checkbox("🔥 SCAN HIGHEST MARKETS", value=config.get("scan_highest", True), key="chk_scan_highest")
+        
+        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>HIGHEST NO PRICE</p>", unsafe_allow_html=True)
+        h_no1, h_no2, h_no3 = st.columns([0.6, 1.2, 1.2])
+        with h_no1:
+            h_filter_no = st.checkbox("No", value=config.get("h_filter_no", True), label_visibility="collapsed", key="chk_h_no", disabled=not scan_highest)
+        with h_no2:
+            h_min_p_no = st.number_input("MIN", min_value=0.0, max_value=100.0, value=config.get("h_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_min_no", disabled=not scan_highest)
+        with h_no3:
+            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
+        
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>HIGHEST GAP FILTER</p>", unsafe_allow_html=True)
+        h_g1, h_g2, h_g3 = st.columns([0.6, 1.2, 1.2])
+        with h_g1:
+            h_gap_filter_enabled = st.checkbox("", value=config.get("h_gap_filter_enabled", True), key="chk_h_gap", disabled=not scan_highest)
+        with h_g2:
+            h_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("h_gap_top_k", 2)), step=1, help="Số bracket Sell YES cao nhất", label_visibility="collapsed", key="num_h_top_k", disabled=not scan_highest)
+        with h_g3:
+            h_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("h_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_h_gap", disabled=not scan_highest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Skip ±{h_gap_value} from Top {h_gap_top_k})</p>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 2. BẢNG ĐIỀU KHIỂN LOWEST
+    with col_low:
+        st.markdown('<div class="type-panel">', unsafe_allow_html=True)
+        scan_lowest = st.checkbox("❄️ SCAN LOWEST MARKETS", value=config.get("scan_lowest", True), key="chk_scan_lowest")
+        
+        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>LOWEST NO PRICE</p>", unsafe_allow_html=True)
+        l_no1, l_no2, l_no3 = st.columns([0.6, 1.2, 1.2])
+        with l_no1:
+            l_filter_no = st.checkbox("No", value=config.get("l_filter_no", True), label_visibility="collapsed", key="chk_l_no", disabled=not scan_lowest)
+        with l_no2:
+            l_min_p_no = st.number_input("MIN", min_value=0.0, max_value=100.0, value=config.get("l_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_min_no", disabled=not scan_lowest)
+        with l_no3:
+            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
+            
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
+        l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
+        with l_g1:
+            l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
+        with l_g2:
+            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số bracket Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
+        with l_g3:
+            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Skip ±{l_gap_value} from Top {l_gap_top_k})</p>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
     with col_msg: st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>Settings apply to the current active session.</p>", unsafe_allow_html=True)
@@ -438,26 +478,53 @@ with st.container():
     st.markdown('</div>', unsafe_allow_html=True)
 
 if search_clicked:
-    current_config = {
-        "min_p_no": min_p_no, "max_p_no": max_p_no, "filter_no": filter_no,
-        "gap_filter_enabled": gap_filter_enabled, "gap_top_k": gap_top_k, "gap_value": gap_value,
-        "selected_dates": selected_dates, "selected_market_types": selected_market_types,
-        "selected_cities": selected_cities, "excluded_cities": excluded_cities
-    }
-    st.session_state.current_config = current_config
-    save_stored_data()
-
-    with st.spinner("Finding markets..."):
-        res, filt, err = asyncio.run(run_scan(
-            min_p_no, max_p_no, filter_no,
-            gap_filter_enabled, gap_top_k, gap_value,
-            selected_cities, excluded_cities, selected_dates, selected_market_types
-        ))
-        st.session_state.scan_results = {
-            "matches": res,
-            "filtered": filt,
-            "errors": err
+    if not scan_highest and not scan_lowest:
+        st.warning("Please check at least one market type to scan (Highest or Lowest).")
+    else:
+        current_config = {
+            "scan_highest": scan_highest,
+            "h_min_p_no": h_min_p_no, "h_max_p_no": h_max_p_no, "h_filter_no": h_filter_no,
+            "h_gap_filter_enabled": h_gap_filter_enabled, "h_gap_top_k": h_gap_top_k, "h_gap_value": h_gap_value,
+            
+            "scan_lowest": scan_lowest,
+            "l_min_p_no": l_min_p_no, "l_max_p_no": l_max_p_no, "l_filter_no": l_filter_no,
+            "l_gap_filter_enabled": l_gap_filter_enabled, "l_gap_top_k": l_gap_top_k, "l_gap_value": l_gap_value,
+            
+            "selected_dates": selected_dates, "selected_cities": selected_cities, "excluded_cities": excluded_cities
         }
+        st.session_state.current_config = current_config
+        save_stored_data()
+
+        highest_cfg = {
+            "enabled": scan_highest,
+            "filter_no": h_filter_no,
+            "min_p_no": h_min_p_no,
+            "max_p_no": h_max_p_no,
+            "gap_filter_enabled": h_gap_filter_enabled,
+            "gap_top_k": h_gap_top_k,
+            "gap_value": h_gap_value
+        }
+
+        lowest_cfg = {
+            "enabled": scan_lowest,
+            "filter_no": l_filter_no,
+            "min_p_no": l_min_p_no,
+            "max_p_no": l_max_p_no,
+            "gap_filter_enabled": l_gap_filter_enabled,
+            "gap_top_k": l_gap_top_k,
+            "gap_value": l_gap_value
+        }
+
+        with st.spinner("Finding markets..."):
+            res, filt, err = asyncio.run(run_scan(
+                highest_cfg, lowest_cfg,
+                selected_cities, excluded_cities, selected_dates
+            ))
+            st.session_state.scan_results = {
+                "matches": res,
+                "filtered": filt,
+                "errors": err
+            }
 
 if st.session_state.scan_results is not None:
     scan_data = st.session_state.scan_results
@@ -472,12 +539,6 @@ if st.session_state.scan_results is not None:
     total_scanned_cities = len(actual_scanned_list)
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
-
-    # --- CHỌN XEM RIÊNG HIGHEST HOẶC LOWEST TRONG KẾT QUẢ NẾU CẢ HAI ĐỀU CÓ ---
-    if not df.empty and len(df['Type'].unique()) > 1:
-        view_type = st.radio("FILTER DISPLAY TYPE:", ["All", "Highest", "Lowest"], horizontal=True)
-        if view_type != "All":
-            df = df[df['Type'] == view_type]
 
     sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
     matched_cities_count = len(sorted_cities)
