@@ -81,7 +81,7 @@ DEFAULT_CONFIG = {
     # Cài đặt cho Highest
     "scan_highest": True,
     "h_min_p_no": 90.0,
-    "h_max_p_no": 99.8,
+    "h_max_p_no": 99.9,
     "h_filter_no": True,
     "h_gap_filter_enabled": True,
     "h_gap_top_k": 2,
@@ -90,14 +90,14 @@ DEFAULT_CONFIG = {
     # Cài đặt cho Lowest
     "scan_lowest": True,
     "l_min_p_no": 90.0,
-    "l_max_p_no": 99.8,
+    "l_max_p_no": 99.9,
     "l_filter_no": True,
     "l_gap_filter_enabled": True,
     "l_gap_top_k": 1,
-    "l_gap_value": 4,
+    "l_gap_value": 3,
 
     # Dùng chung
-    "selected_dates": ["Today", "Tomorrow", "Day After Tomorrow"],
+    "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
     "ordered_markets": [],
