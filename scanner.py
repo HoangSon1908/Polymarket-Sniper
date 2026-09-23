@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
-STORAGE_FILE = "storage_config.json"  # Server Storage Config
+STORAGE_FILE = "storage_config.json"
 
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": ["highest", "lowest"], "status": "active"},
@@ -78,25 +78,26 @@ DEFAULT_FAVORITE_CITIES = [
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 DEFAULT_CONFIG = {
-    # Cài đặt cho Highest
     "scan_highest": True,
     "h_min_p_no": 90.0,
-    "h_max_p_no": 99.9,
+    "h_max_p_no": 100.0,
     "h_filter_no": True,
     "h_gap_filter_enabled": True,
-    "h_gap_top_k": 2,
+    "h_gap_top_k": 1,
     "h_gap_value": 4,
+    "h_use_buffer_1pct": True,
+    "h_buffer_count": 2,
 
-    # Cài đặt cho Lowest
     "scan_lowest": True,
     "l_min_p_no": 90.0,
-    "l_max_p_no": 99.9,
+    "l_max_p_no": 100.0,
     "l_filter_no": True,
     "l_gap_filter_enabled": True,
     "l_gap_top_k": 1,
     "l_gap_value": 3,
+    "l_use_buffer_1pct": True,
+    "l_buffer_count": 2,
 
-    # Dùng chung
     "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
@@ -104,7 +105,6 @@ DEFAULT_CONFIG = {
     "checked_markets": []
 }
 
-# --- JSON PERSISTENCE HELPERS ---
 def load_stored_data():
     if os.path.exists(STORAGE_FILE):
         try:
@@ -137,7 +137,6 @@ def save_stored_data():
     except Exception as e:
         st.error(f"Config Write Error: {e}")
 
-# --- CALLBACK FUNCTIONS ---
 def toggle_ordered_status(event_title):
     if event_title in st.session_state.ordered_markets:
         st.session_state.ordered_markets.remove(event_title)
@@ -161,7 +160,6 @@ def clear_all_flags():
     st.session_state.checked_markets = []
     save_stored_data()
 
-# --- HELPER FUNCTIONS ---
 def parse_val(title):
     if not title: return None
     nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
@@ -184,6 +182,56 @@ def get_target_dates(selected_date_labels):
                 "display": d.strftime("%d/%m/%Y")
             })
     return dates
+
+def get_bracket_prob(m, books):
+    try:
+        raw_op = m.get("outcomePrices")
+        if raw_op:
+            prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
+            if prices and len(prices) > 0:
+                return float(prices[0]) * 100
+    except Exception:
+        pass
+    
+    try:
+        tokens = json.loads(m.get("clobTokenIds", "[]"))
+        if tokens:
+            y_book = books.get(tokens[0], {})
+            y_asks = y_book.get("asks", [])
+            if y_asks:
+                return float(min(y_asks, key=lambda x: float(x["price"]))["price"]) * 100
+    except Exception:
+        pass
+    return 0.0
+
+def has_buffer_gap(sorted_markets, top_idx, curr_idx, books, req_count=2, threshold=1.0):
+    if curr_idx == top_idx:
+        return False
+
+    if curr_idx > top_idx:
+        in_between = sorted_markets[top_idx + 1 : curr_idx]
+        consecutive = 0
+        for m in in_between:
+            prob = get_bracket_prob(m, books)
+            if prob <= threshold:
+                consecutive += 1
+                if consecutive >= req_count:
+                    return True
+            else:
+                consecutive = 0
+    else:
+        in_between = list(reversed(sorted_markets[curr_idx + 1 : top_idx]))
+        consecutive = 0
+        for m in in_between:
+            prob = get_bracket_prob(m, books)
+            if prob <= threshold:
+                consecutive += 1
+                if consecutive >= req_count:
+                    return True
+            else:
+                consecutive = 0
+
+    return False
 
 async def check_event(session, semaphore, city, date_info, m_type, type_cfg, matches_list, filtered_cities, error_cities):
     async with semaphore:
@@ -222,21 +270,13 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
             books = {b["asset_id"]: b for b in books_data}
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
 
-            # --- TÌM TOP K BRACKET CÓ GIÁ SELL YES CAO NHẤT (BEST BID) ---
+            # TÌM BRACKET CÓ XÁC SUẤT HOẶC GIÁ YES CAO NHẤT
             top_bracket_indices = []
             if type_cfg["gap_filter_enabled"]:
                 market_yes_candidates = []
                 for i, m in enumerate(sorted_markets):
-                    tokens = json.loads(m.get("clobTokenIds", "[]"))
-                    if len(tokens) < 2: continue
-                    y_id = tokens[0]
-                    y_book = books.get(y_id, {})
-                    
-                    y_bids = y_book.get("bids", [])
-                    if not y_bids: continue
-                    
-                    y_sell_p = float(max(y_bids, key=lambda x: float(x["price"]))["price"])
-                    market_yes_candidates.append((i, y_sell_p))
+                    prob = get_bracket_prob(m, books)
+                    market_yes_candidates.append((i, prob))
                 
                 market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
                 top_bracket_indices = [item[0] for item in market_yes_candidates[:type_cfg["gap_top_k"]]]
@@ -272,10 +312,22 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                                 break
                         
                         if current_idx != -1:
-                            for ref_idx in top_bracket_indices:
-                                if abs(current_idx - ref_idx) <= type_cfg["gap_value"]:
-                                    pass_gap = False
-                                    break
+                            if type_cfg.get("use_buffer_1pct", False):
+                                # Kiểm tra có đủ N bracket <= 1% ở giữa không
+                                main_top_idx = top_bracket_indices[0]
+                                pass_gap = has_buffer_gap(
+                                    sorted_markets,
+                                    main_top_idx,
+                                    current_idx,
+                                    books,
+                                    req_count=type_cfg.get("buffer_count", 2),
+                                    threshold=1.0
+                                )
+                            else:
+                                for ref_idx in top_bracket_indices:
+                                    if abs(current_idx - ref_idx) <= type_cfg["gap_value"]:
+                                        pass_gap = False
+                                        break
                     
                     if pass_gap:
                         is_match = True
@@ -418,10 +470,9 @@ with st.container():
 
     st.markdown("<hr style='border: 1px solid #3d1b2b; margin: 15px 0;'>", unsafe_allow_html=True)
 
-    # --- KHU VỰC TÁCH BẠCH BỘ LỌC HIGHEST VÀ LOWEST ---
     col_high, col_low = st.columns(2)
     
-    # 1. BẢNG ĐIỀU KHIỂN HIGHEST
+    # 1. BẢNG HIGHEST
     with col_high:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_highest = st.checkbox("🔥 SCAN HIGHEST MARKETS", value=config.get("scan_highest", True), key="chk_scan_highest")
@@ -433,20 +484,32 @@ with st.container():
         with h_no2:
             h_min_p_no = st.number_input("MIN", min_value=0.0, max_value=100.0, value=config.get("h_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_min_no", disabled=not scan_highest)
         with h_no3:
-            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
+            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 100.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
         
-        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>HIGHEST GAP FILTER</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>HIGHEST GAP & BUFFER FILTER</p>", unsafe_allow_html=True)
         h_g1, h_g2, h_g3 = st.columns([0.6, 1.2, 1.2])
         with h_g1:
             h_gap_filter_enabled = st.checkbox("", value=config.get("h_gap_filter_enabled", True), key="chk_h_gap", disabled=not scan_highest)
         with h_g2:
-            h_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("h_gap_top_k", 2)), step=1, help="Số bracket Sell YES cao nhất", label_visibility="collapsed", key="num_h_top_k", disabled=not scan_highest)
+            h_use_buffer_1pct = st.checkbox("🎯 1% Buffer", value=config.get("h_use_buffer_1pct", True), key="chk_h_buf", disabled=not scan_highest or not h_gap_filter_enabled, help="Quét bracket đứng sau ít nhất N bracket <= 1%")
         with h_g3:
-            h_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("h_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_h_gap", disabled=not scan_highest)
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Skip ±{h_gap_value} from Top {h_gap_top_k})</p>", unsafe_allow_html=True)
+            h_buffer_count = st.number_input("Buffer Brackets", min_value=1, max_value=5, value=int(config.get("h_buffer_count", 2)), step=1, label_visibility="collapsed", key="num_h_buf_cnt", disabled=not scan_highest or not h_use_buffer_1pct)
+        
+        if not h_use_buffer_1pct:
+            h_sub1, h_sub2 = st.columns(2)
+            with h_sub1:
+                h_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("h_gap_top_k", 2)), step=1, key="num_h_top_k", disabled=not scan_highest)
+            with h_sub2:
+                h_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("h_gap_value", 4)), step=1, key="num_h_gap", disabled=not scan_highest)
+            st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Skip ±{h_gap_value} from Top {h_gap_top_k})</p>", unsafe_allow_html=True)
+        else:
+            h_gap_top_k = 1
+            h_gap_value = 4
+            st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-4px'>Requires ≥ {h_buffer_count} brackets with ≤ 1% between Top & Target</p>", unsafe_allow_html=True)
+            
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. BẢNG ĐIỀU KHIỂN LOWEST
+    # 2. BẢNG LOWEST
     with col_low:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_lowest = st.checkbox("❄️ SCAN LOWEST MARKETS", value=config.get("scan_lowest", True), key="chk_scan_lowest")
@@ -458,17 +521,29 @@ with st.container():
         with l_no2:
             l_min_p_no = st.number_input("MIN", min_value=0.0, max_value=100.0, value=config.get("l_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_min_no", disabled=not scan_lowest)
         with l_no3:
-            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.7), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
+            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 100.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
             
-        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP & BUFFER FILTER</p>", unsafe_allow_html=True)
         l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
         with l_g1:
             l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
         with l_g2:
-            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số bracket Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
+            l_use_buffer_1pct = st.checkbox("🎯 1% Buffer", value=config.get("l_use_buffer_1pct", True), key="chk_l_buf", disabled=not scan_lowest or not l_gap_filter_enabled, help="Quét bracket đứng sau ít nhất N bracket <= 1%")
         with l_g3:
-            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Skip ±{l_gap_value} from Top {l_gap_top_k})</p>", unsafe_allow_html=True)
+            l_buffer_count = st.number_input("Buffer Brackets", min_value=1, max_value=5, value=int(config.get("l_buffer_count", 2)), step=1, label_visibility="collapsed", key="num_l_buf_cnt", disabled=not scan_lowest or not l_use_buffer_1pct)
+        
+        if not l_use_buffer_1pct:
+            l_sub1, l_sub2 = st.columns(2)
+            with l_sub1:
+                l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, key="num_l_top_k", disabled=not scan_lowest)
+            with l_sub2:
+                l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, key="num_l_gap", disabled=not scan_lowest)
+            st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Skip ±{l_gap_value} from Top {l_gap_top_k})</p>", unsafe_allow_html=True)
+        else:
+            l_gap_top_k = 1
+            l_gap_value = 4
+            st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-4px'>Requires ≥ {l_buffer_count} brackets with ≤ 1% between Top & Target</p>", unsafe_allow_html=True)
+            
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
@@ -485,10 +560,12 @@ if search_clicked:
             "scan_highest": scan_highest,
             "h_min_p_no": h_min_p_no, "h_max_p_no": h_max_p_no, "h_filter_no": h_filter_no,
             "h_gap_filter_enabled": h_gap_filter_enabled, "h_gap_top_k": h_gap_top_k, "h_gap_value": h_gap_value,
+            "h_use_buffer_1pct": h_use_buffer_1pct, "h_buffer_count": h_buffer_count,
             
             "scan_lowest": scan_lowest,
             "l_min_p_no": l_min_p_no, "l_max_p_no": l_max_p_no, "l_filter_no": l_filter_no,
             "l_gap_filter_enabled": l_gap_filter_enabled, "l_gap_top_k": l_gap_top_k, "l_gap_value": l_gap_value,
+            "l_use_buffer_1pct": l_use_buffer_1pct, "l_buffer_count": l_buffer_count,
             
             "selected_dates": selected_dates, "selected_cities": selected_cities, "excluded_cities": excluded_cities
         }
@@ -502,7 +579,9 @@ if search_clicked:
             "max_p_no": h_max_p_no,
             "gap_filter_enabled": h_gap_filter_enabled,
             "gap_top_k": h_gap_top_k,
-            "gap_value": h_gap_value
+            "gap_value": h_gap_value,
+            "use_buffer_1pct": h_use_buffer_1pct,
+            "buffer_count": h_buffer_count
         }
 
         lowest_cfg = {
@@ -512,7 +591,9 @@ if search_clicked:
             "max_p_no": l_max_p_no,
             "gap_filter_enabled": l_gap_filter_enabled,
             "gap_top_k": l_gap_top_k,
-            "gap_value": l_gap_value
+            "gap_value": l_gap_value,
+            "use_buffer_1pct": l_use_buffer_1pct,
+            "buffer_count": l_buffer_count
         }
 
         with st.spinner("Finding markets..."):
@@ -547,7 +628,6 @@ if st.session_state.scan_results is not None:
     filtered_list = [c for c in no_match_at_all if c in filtered_raw]
     error_list = [c for c in no_match_at_all if c not in filtered_list]
 
-    # --- HEADER ROW & BADGES ---
     col_title, col_badges = st.columns([1.6, 2.6])
     with col_title:
         badge_color = "#ec4899" if matched_cities_count > 0 else "#f85149"
@@ -584,7 +664,6 @@ if st.session_state.scan_results is not None:
             
         st.markdown(f"<div style='margin-top: 10px;'>{badges_html}</div>", unsafe_allow_html=True)
 
-    # --- RENDER CARD FULL WIDTH ---
     if not df.empty:
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
