@@ -507,11 +507,11 @@ with st.container():
             l_max_p_no = st.number_input("MAX (EMPTY)", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.8), step=0.1, format="%.1f", help="Mức giá này phải trống (không có ai bid >= mức này)", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Trống từ {l_max_p_no:.1f}¢ trở lên | Best Bid từ {l_min_p_no:.1f}¢)</p>", unsafe_allow_html=True)
             
-      st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
         l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
         with l_g1:
             l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
-        with l_g2:  # <-- Sửa chỗ này (trước đó bị gõ nhầm thành with l_gap_top_k:)
+        with l_g2:
             l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
         with l_g3:
             l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
