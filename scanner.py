@@ -77,7 +77,7 @@ DEFAULT_FAVORITE_CITIES = [
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
-# --- DEFAULT CONFIG CHO HỆ THỐNG SCANNER LIMIT & MARKET ---
+# --- DEFAULT CONFIG ---
 DEFAULT_CONFIG = {
     # 1. Cài đặt Highest
     "scan_highest": True,
@@ -265,39 +265,34 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 no_id = info["other"]
                 evt = info["event"]
                 
-                yes_book = books.get(yes_id, {})
                 no_book = books.get(no_id, {})
                 
-                # 1. NO Bids (dành cho kê Limit)
+                # 1. Trích xuất NO Bids (giá người ta đặt mua NO)
                 n_bids = no_book.get("bids", [])
                 valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
-                best_no_bid = max(valid_no_bids) if valid_no_bids else 0.0
-                best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if valid_no_bids else 0.0
+                best_no_bid = max(valid_no_bids) if valid_no_bids else None
+                best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if best_no_bid is not None else 0.0
+                best_bid_cents = round(best_no_bid * 100, 2) if best_no_bid is not None else 0.0
                 
-                # 2. NO Asks (dành cho ăn ngay Market)
+                # 2. Trích xuất NO Asks (giá người ta treo bán NO)
                 n_asks = no_book.get("asks", [])
                 valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
-                best_no_ask = min(valid_no_asks) if valid_no_asks else 1.0
-                best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if valid_no_asks else 0.0
+                best_no_ask = min(valid_no_asks) if valid_no_asks else None
+                best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if best_no_ask is not None else 0.0
+                best_ask_cents = round(best_no_ask * 100, 2) if best_no_ask is not None else None
                 
-                # 3. YES Asks
-                y_asks = yes_book.get("asks", [])
-                valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
-                yes_price = min(valid_y_asks) if valid_y_asks else 1.0
-                y_depth = sum(float(a.get("size", 0)) for a in y_asks if float(a.get("price", 0)) == yes_price) if valid_y_asks else 0.0
-                
-                spread = (best_no_ask - best_no_bid) * 100 if best_no_bid > 0 else (best_no_ask * 100)
-                best_ask_cents = round(best_no_ask * 100, 2)
-                best_bid_cents = round(best_no_bid * 100, 2)
-                
+                # Tính Spread giữa Ask và Bid của NO
+                if best_no_ask is not None and best_no_bid is not None:
+                    spread_val = round((best_no_ask - best_no_bid) * 100, 1)
+                    spread_str = f"Spread {spread_val:.1f}¢"
+                else:
+                    spread_str = "Spread —"
+
                 is_match = False
                 matched_price = 100.0
                 target_type = "LIMIT_BID"
-                display_price = best_bid_cents
-                display_depth = best_bid_depth
-                display_label = "No Bid"
                 
-                # --- KIỂM TRA ĐIỀU KIỆN KÊ LỆNH LIMIT & HỐT MARKET ---
+                # --- KIỂM TRA ĐIỀU KIỆN ---
                 if type_cfg.get("filter_no", True):
                     min_limit = type_cfg["min_p_no"]
                     max_limit = type_cfg["max_p_no"]
@@ -318,23 +313,17 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                                     break
                     
                     if pass_gap:
-                        # KÈO 1: Có Ask bán sẵn <= ngưỡng cài đặt -> Mua Market khớp được luôn (Ngon nhất)
-                        if best_ask_cents <= max_limit:
+                        # KÈO 1: Có Ask bán sẵn <= ngưỡng cài đặt -> Mua Market khớp luôn
+                        if best_ask_cents is not None and best_ask_cents <= max_limit:
                             is_match = True
-                            matched_price = best_ask_cents - 0.001  # Ưu tiên xếp trước
+                            matched_price = best_ask_cents - 0.0001
                             target_type = "MARKET_BUY"
-                            display_price = best_ask_cents
-                            display_depth = best_ask_depth
-                            display_label = "No Ask"
                         
                         # KÈO 2: Mức max_limit trống, Best Bid thỏa mãn -> Kê Limit đón đầu
                         elif min_limit <= best_bid_cents < max_limit:
                             is_match = True
                             matched_price = best_bid_cents
                             target_type = "LIMIT_BID"
-                            display_price = best_bid_cents
-                            display_depth = best_bid_depth
-                            display_label = "No Bid"
 
                 if is_match:
                     event_has_match = True
@@ -343,14 +332,13 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                         "Date": date_info["display"], 
                         "Type": "Highest" if m_type == "highest" else "Lowest",
                         "Market": m.get("groupItemTitle") or m.get("question"), 
-                        "YES": yes_price * 100, 
-                        "NO": display_price, 
-                        "YES_Depth": y_depth, 
-                        "NO_Depth": display_depth, 
-                        "Spread": spread, 
+                        "NO_Bid_Display": f"{best_bid_cents:.1f}¢" if best_no_bid is not None else "Trống",
+                        "NO_Bid_Depth": best_bid_depth,
+                        "NO_Ask_Display": f"{best_ask_cents:.1f}¢" if best_no_ask is not None else "Trống",
+                        "NO_Ask_Depth": best_ask_depth,
+                        "Spread_Display": spread_str,
                         "MatchedPrice": matched_price,
                         "TargetType": target_type,
-                        "DisplayLabel": display_label,
                         "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
                         "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
                     })
@@ -414,9 +402,9 @@ st.markdown("""
     .result-card { background-color: #1c1116; border: 1px solid #4a2335; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(236,72,153,0.05); }
     .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
     
-    .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
-    .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 105px; text-align: center; }
-    .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }
+    .price-btn-bid { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }
+    .price-btn-ask { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }
+    .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; text-align: center; }
     .depth-text { color: #9d8590; font-size: 0.7rem; margin-top: 2px; }
     
     a[href="#top"] {
@@ -542,7 +530,7 @@ with st.container():
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
     with col_msg: 
-        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ưu tiên quét Ask để mua ngay, nếu trống thì tìm ô đẹp nhất để kê Limit.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ô xanh = NO Bid, Ô đỏ = NO Ask. Tự động tìm bracket ngon nhất đại diện cho market.</p>", unsafe_allow_html=True)
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -693,17 +681,15 @@ if st.session_state.scan_results is not None:
                         btn_text = "Cancel Order" if is_ordered else "Order 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
-                    # Lấy DUY NHẤT 1 bracket tốt nhất đại diện cho Market này
+                    # Lấy ĐÚNG bracket có giá ngon nhất đại diện cho Market
                     row = event_markets.iloc[0]
                     safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
                     
                     target_tag = (
-                        "<span style='background-color:#0d4429; color:#3fb950; padding:2px 6px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px;'>⚡ BUY NOW (ASK)</span>"
+                        "<span style='background-color:#0d4429; color:#3fb950; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #3fb950;'>⚡ BUY NOW (ASK)</span>"
                         if row.get('TargetType') == 'MARKET_BUY'
-                        else "<span style='background-color:#3a2d0c; color:#e3b341; padding:2px 6px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px;'>🎯 PLACE LIMIT</span>"
+                        else "<span style='background-color:#3a2d0c; color:#e3b341; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #e3b341;'>🎯 PLACE LIMIT</span>"
                     )
-                    
-                    no_btn_class = "price-btn-yes" if row.get('TargetType') == 'MARKET_BUY' else "price-btn-no"
                     
                     row_html = f"""
                     <!DOCTYPE html>
@@ -727,9 +713,9 @@ if st.session_state.scan_results is not None:
                             box-sizing: border-box;
                             height: 68px;
                         }}
-                        .price-btn-yes {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 85px; text-align: center; }}
-                        .price-btn-no {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 105px; text-align: center; }}
-                        .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }}
+                        .price-btn-bid {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
+                        .price-btn-ask {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
+                        .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; text-align: center; min-width: 85px; }}
                         .depth-text {{ color: #9d8590; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
                         .copy-link {{ background-color: #ec4899; color: white !important; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s ease; }}
                         .copy-link:hover {{ background-color: #f43f5e; }}
@@ -742,13 +728,13 @@ if st.session_state.scan_results is not None:
                         </div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
                             <div style="text-align:center">
-                                <div class="price-btn-yes">Yes Ask {row['YES']:.1f}¢</div>
-                                <div class="depth-text">${row['YES_Depth']:,.0f}</div>
+                                <div class="price-btn-bid">No Bid {row['NO_Bid_Display']}</div>
+                                <div class="depth-text">${row['NO_Bid_Depth']:,.0f}</div>
                             </div>
-                            <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
+                            <div class="spread-box">{row['Spread_Display']}</div>
                             <div style="text-align:center">
-                                <div class="{no_btn_class}">{row['DisplayLabel']} {row['NO']:.1f}¢</div>
-                                <div class="depth-text">${row['NO_Depth']:,.0f}</div>
+                                <div class="price-btn-ask">No Ask {row['NO_Ask_Display']}</div>
+                                <div class="depth-text">${row['NO_Ask_Depth']:,.0f}</div>
                             </div>
                         </div>
                         <div style="flex:1; text-align:right">
