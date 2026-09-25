@@ -77,18 +77,18 @@ DEFAULT_FAVORITE_CITIES = [
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
-# --- DEFAULT CONFIG CHO HỆ THỐNG SCANNER LIMIT ---
+# --- DEFAULT CONFIG CHO HỆ THỐNG SCANNER LIMIT & MARKET ---
 DEFAULT_CONFIG = {
-    # 1. Cài đặt Limit cho Highest
+    # 1. Cài đặt Highest
     "scan_highest": True,
     "h_filter_no": True,
     "h_min_p_no": 90.0,
-    "h_max_p_no": 99.8,        # Ngưỡng trống lệnh (Không có ai bid >= 99.8¢)
+    "h_max_p_no": 99.8,
     "h_gap_filter_enabled": True,
     "h_gap_top_k": 2,
     "h_gap_value": 4,
 
-    # 2. Cài đặt Limit cho Lowest
+    # 2. Cài đặt Lowest
     "scan_lowest": True,
     "l_filter_no": True,
     "l_min_p_no": 90.0,
@@ -161,9 +161,11 @@ def clear_all_flags():
     save_stored_data()
 
 def parse_val(title):
-    if not title: return None
+    if not title:
+        return None
     nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
-    if not nums: return None
+    if not nums:
+        return None
     if len(nums) >= 2:
         return (float(nums[0]) + float(nums[1])) / 2
     return float(nums[0])
@@ -223,7 +225,8 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
             market_map = {}
             for m in markets:
                 tokens = json.loads(m.get("clobTokenIds", "[]"))
-                if len(tokens) < 2: continue
+                if len(tokens) < 2:
+                    continue
                 yes_id, no_id = tokens[0], tokens[1]
                 book_reqs.extend([{"token_id": yes_id}, {"token_id": no_id}])
                 market_map[yes_id] = {"m": m, "side": "YES", "other": no_id, "event": event}
@@ -256,7 +259,8 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
             
             event_has_match = False
             for yes_id, info in market_map.items():
-                if info["side"] != "YES": continue
+                if info["side"] != "YES":
+                    continue
                 m = info["m"]
                 no_id = info["other"]
                 evt = info["event"]
@@ -264,58 +268,73 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 yes_book = books.get(yes_id, {})
                 no_book = books.get(no_id, {})
                 
-                # 1. Trích xuất sổ lệnh NO Bids (quan trọng nhất để quét kê lệnh Limit)
+                # 1. NO Bids (dành cho kê Limit)
                 n_bids = no_book.get("bids", [])
                 valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
                 best_no_bid = max(valid_no_bids) if valid_no_bids else 0.0
                 best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if valid_no_bids else 0.0
                 
-                # 2. NO Asks & YES Asks
+                # 2. NO Asks (dành cho ăn ngay Market)
                 n_asks = no_book.get("asks", [])
                 valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
                 best_no_ask = min(valid_no_asks) if valid_no_asks else 1.0
                 best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if valid_no_asks else 0.0
                 
+                # 3. YES Asks
                 y_asks = yes_book.get("asks", [])
                 valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
                 yes_price = min(valid_y_asks) if valid_y_asks else 1.0
                 y_depth = sum(float(a.get("size", 0)) for a in y_asks if float(a.get("price", 0)) == yes_price) if valid_y_asks else 0.0
                 
                 spread = (best_no_ask - best_no_bid) * 100 if best_no_bid > 0 else (best_no_ask * 100)
+                best_ask_cents = round(best_no_ask * 100, 2)
                 best_bid_cents = round(best_no_bid * 100, 2)
                 
                 is_match = False
                 matched_price = 100.0
+                target_type = "LIMIT_BID"
+                display_price = best_bid_cents
+                display_depth = best_bid_depth
+                display_label = "No Bid"
                 
-                # --- KIỂM TRA ĐIỀU KIỆN KÊ LỆNH LIMIT ---
+                # --- KIỂM TRA ĐIỀU KIỆN KÊ LỆNH LIMIT & HỐT MARKET ---
                 if type_cfg.get("filter_no", True):
                     min_limit = type_cfg["min_p_no"]
                     max_limit = type_cfg["max_p_no"]
                     
-                    # Điều kiện Limit:
-                    # - Mức max_limit (ví dụ 99.8¢) phải TRỐNG LỆNH (Best Bid < max_limit)
-                    # - Best Bid >= min_limit (ví dụ >= 90.0¢ để đảm bảo có thanh khoản nền)
-                    if min_limit <= best_bid_cents < max_limit:
-                        pass_gap = True
-                        
-                        current_idx = -1
-                        for idx, sm in enumerate(sorted_markets):
-                            if sm['id'] == m['id']:
-                                current_idx = idx
-                                break
+                    pass_gap = True
+                    current_idx = -1
+                    for idx, sm in enumerate(sorted_markets):
+                        if sm['id'] == m['id']:
+                            current_idx = idx
+                            break
 
-                        # Kiểm tra khoảng cách Gap cố định né Top K (ví dụ né cách 4 ô từ Top 2)
-                        if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
-                            if current_idx != -1:
-                                for ref_idx in top_bracket_indices:
-                                    if abs(current_idx - ref_idx) <= type_cfg["gap_value"]:
-                                        pass_gap = False
-                                        break
-                        
-                        if pass_gap:
+                    # Kiểm tra khoảng cách Gap cố định né Top K (cả 2 phía)
+                    if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
+                        if current_idx != -1:
+                            for ref_idx in top_bracket_indices:
+                                if abs(current_idx - ref_idx) <= type_cfg["gap_value"]:
+                                    pass_gap = False
+                                    break
+                    
+                    if pass_gap:
+                        # KÈO 1: Có Ask bán sẵn <= ngưỡng cài đặt -> Mua Market khớp được luôn (Ngon nhất)
+                        if best_ask_cents <= max_limit:
                             is_match = True
-                            # Dùng giá Best Bid hiện tại làm thước đo so sánh (càng thấp càng có lợi)
+                            matched_price = best_ask_cents - 0.001  # Ưu tiên xếp trước
+                            target_type = "MARKET_BUY"
+                            display_price = best_ask_cents
+                            display_depth = best_ask_depth
+                            display_label = "No Ask"
+                        
+                        # KÈO 2: Mức max_limit trống, Best Bid thỏa mãn -> Kê Limit đón đầu
+                        elif min_limit <= best_bid_cents < max_limit:
+                            is_match = True
                             matched_price = best_bid_cents
+                            target_type = "LIMIT_BID"
+                            display_price = best_bid_cents
+                            display_depth = best_bid_depth
+                            display_label = "No Bid"
 
                 if is_match:
                     event_has_match = True
@@ -325,11 +344,13 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                         "Type": "Highest" if m_type == "highest" else "Lowest",
                         "Market": m.get("groupItemTitle") or m.get("question"), 
                         "YES": yes_price * 100, 
-                        "NO": best_bid_cents,        # Hiển thị Best Bid hiện tại của NO
+                        "NO": display_price, 
                         "YES_Depth": y_depth, 
-                        "NO_Depth": best_bid_depth,  # Depth tại mức Best Bid đó
+                        "NO_Depth": display_depth, 
                         "Spread": spread, 
                         "MatchedPrice": matched_price,
+                        "TargetType": target_type,
+                        "DisplayLabel": display_label,
                         "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
                         "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
                     })
@@ -394,7 +415,7 @@ st.markdown("""
     .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
     
     .price-btn-yes { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
-    .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }
+    .price-btn-no { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 105px; text-align: center; }
     .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }
     .depth-text { color: #9d8590; font-size: 0.7rem; margin-top: 2px; }
     
@@ -462,24 +483,24 @@ with st.container():
     st.markdown("<hr style='border: 1px solid #3d1b2b; margin: 15px 0;'>", unsafe_allow_html=True)
 
     # ==============================================================
-    # BẢNG ĐIỀU KHIỂN LIMIT: HIGHEST VÀ LOWEST
+    # BẢNG ĐIỀU KHIỂN LIMIT & MARKET
     # ==============================================================
     col_high, col_low = st.columns(2)
     
-    # 1. BẢNG HIGHEST LIMIT
+    # 1. BẢNG HIGHEST
     with col_high:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_highest = st.checkbox("🔥 SCAN HIGHEST MARKETS", value=config.get("scan_highest", True), key="chk_scan_highest")
         
-        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>HIGHEST NO LIMIT BIDS (MIN - MAX EMPTY THRESHOLD)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>HIGHEST NO PRICE (MIN BID - MAX THRESHOLD)</p>", unsafe_allow_html=True)
         h_no1, h_no2, h_no3 = st.columns([0.6, 1.2, 1.2])
         with h_no1:
             h_filter_no = st.checkbox("Limit", value=config.get("h_filter_no", True), label_visibility="collapsed", key="chk_h_no", disabled=not scan_highest)
         with h_no2:
             h_min_p_no = st.number_input("MIN BID", min_value=0.0, max_value=100.0, value=config.get("h_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_min_no", disabled=not scan_highest)
         with h_no3:
-            h_max_p_no = st.number_input("MAX (EMPTY)", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.8), step=0.1, format="%.1f", help="Mức giá này phải trống (không có ai bid >= mức này)", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Trống từ {h_max_p_no:.1f}¢ trở lên | Best Bid từ {h_min_p_no:.1f}¢)</p>", unsafe_allow_html=True)
+            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.8), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Ask ≤ {h_max_p_no:.1f}¢: Mua luôn | Trống {h_max_p_no:.1f}¢: Kê Limit)</p>", unsafe_allow_html=True)
 
         st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>HIGHEST GAP FILTER</p>", unsafe_allow_html=True)
         h_g1, h_g2, h_g3 = st.columns([0.6, 1.2, 1.2])
@@ -492,20 +513,20 @@ with st.container():
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{h_gap_value} ô từ Top {h_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. BẢNG LOWEST LIMIT
+    # 2. BẢNG LOWEST
     with col_low:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_lowest = st.checkbox("❄️ SCAN LOWEST MARKETS", value=config.get("scan_lowest", True), key="chk_scan_lowest")
         
-        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>LOWEST NO LIMIT BIDS (MIN - MAX EMPTY THRESHOLD)</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>LOWEST NO PRICE (MIN BID - MAX THRESHOLD)</p>", unsafe_allow_html=True)
         l_no1, l_no2, l_no3 = st.columns([0.6, 1.2, 1.2])
         with l_no1:
             l_filter_no = st.checkbox("Limit", value=config.get("l_filter_no", True), label_visibility="collapsed", key="chk_l_no", disabled=not scan_lowest)
         with l_no2:
             l_min_p_no = st.number_input("MIN BID", min_value=0.0, max_value=100.0, value=config.get("l_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_min_no", disabled=not scan_lowest)
         with l_no3:
-            l_max_p_no = st.number_input("MAX (EMPTY)", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.8), step=0.1, format="%.1f", help="Mức giá này phải trống (không có ai bid >= mức này)", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
-        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Trống từ {l_max_p_no:.1f}¢ trở lên | Best Bid từ {l_min_p_no:.1f}¢)</p>", unsafe_allow_html=True)
+            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.8), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Ask ≤ {l_max_p_no:.1f}¢: Mua luôn | Trống {l_max_p_no:.1f}¢: Kê Limit)</p>", unsafe_allow_html=True)
             
         st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
         l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
@@ -517,10 +538,11 @@ with st.container():
             l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{l_gap_value} ô từ Top {l_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+
     st.markdown("---")
     col_msg, col_btn = st.columns([2, 1])
     with col_msg: 
-        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Limit Hunter Active:</b> Tự động chọn Bracket có Best Bid thấp nhất để bạn vào đón đầu.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ưu tiên quét Ask để mua ngay, nếu trống thì tìm ô đẹp nhất để kê Limit.</p>", unsafe_allow_html=True)
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -563,7 +585,7 @@ if search_clicked:
             "gap_value": l_gap_value
         }
 
-        with st.spinner("Hunting Limit Opportunities..."):
+        with st.spinner("Hunting Opportunities..."):
             res, filt, err = asyncio.run(run_scan(
                 highest_cfg, lowest_cfg,
                 selected_cities, excluded_cities, selected_dates
@@ -588,7 +610,6 @@ if st.session_state.scan_results is not None:
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
 
-    # Sắp xếp các thành phố theo Best Bid nhỏ nhất (ngon nhất)
     sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
     matched_cities_count = len(sorted_cities)
 
@@ -600,7 +621,7 @@ if st.session_state.scan_results is not None:
     col_title, col_badges = st.columns([1.6, 2.6])
     with col_title:
         badge_color = "#ec4899" if matched_cities_count > 0 else "#f85149"
-        st.markdown(f"### Limit Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        st.markdown(f"### Hunt Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
         
         if st.session_state.ordered_markets:
             ordered_summary = []
@@ -623,7 +644,8 @@ if st.session_state.scan_results is not None:
                 badges_html += f"<span style='background-color: #3a2d0c; color: #e3b341; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 6px; border: 1px solid #e3b341; display: inline-block; margin-bottom: 4px;'>{city}</span>"
         
         if error_list:
-            if filtered_list: badges_html += "<span style='margin-right: 15px;'></span>"
+            if filtered_list:
+                badges_html += "<span style='margin-right: 15px;'></span>"
             badges_html += f"<span style='color: #f85149; font-size: 0.85rem; font-weight: bold; margin-right: 5px;'>🔴 NO MARKET / API ERROR:</span>"
             for city in sorted(error_list):
                 badges_html += f"<span style='background-color: #490e15; color: #f85149; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 6px; border: 1px solid #f85149; display: inline-block; margin-bottom: 4px;'>{city}</span>"
@@ -636,7 +658,6 @@ if st.session_state.scan_results is not None:
     # --- RENDER CARD FULL WIDTH ---
     if not df.empty:
         for city_name in sorted_cities:
-            # Sắp xếp MatchedPrice tăng dần: giá Bid nhỏ hơn đứng trước (99.6¢ đứng trước 99.7¢)
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
             with st.container():
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
@@ -672,9 +693,17 @@ if st.session_state.scan_results is not None:
                         btn_text = "Cancel Order" if is_ordered else "Order 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
-                    # Lấy ĐÚNG bracket ngon nhất (best price) đại diện cho Market
+                    # Lấy DUY NHẤT 1 bracket tốt nhất đại diện cho Market này
                     row = event_markets.iloc[0]
                     safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
+                    
+                    target_tag = (
+                        "<span style='background-color:#0d4429; color:#3fb950; padding:2px 6px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px;'>⚡ BUY NOW (ASK)</span>"
+                        if row.get('TargetType') == 'MARKET_BUY'
+                        else "<span style='background-color:#3a2d0c; color:#e3b341; padding:2px 6px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px;'>🎯 PLACE LIMIT</span>"
+                    )
+                    
+                    no_btn_class = "price-btn-yes" if row.get('TargetType') == 'MARKET_BUY' else "price-btn-no"
                     
                     row_html = f"""
                     <!DOCTYPE html>
@@ -698,8 +727,8 @@ if st.session_state.scan_results is not None:
                             box-sizing: border-box;
                             height: 68px;
                         }}
-                        .price-btn-yes {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 80px; text-align: center; }}
-                        .price-btn-no {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 100px; text-align: center; }}
+                        .price-btn-yes {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 85px; text-align: center; }}
+                        .price-btn-no {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 105px; text-align: center; }}
                         .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; }}
                         .depth-text {{ color: #9d8590; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
                         .copy-link {{ background-color: #ec4899; color: white !important; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s ease; }}
@@ -709,7 +738,7 @@ if st.session_state.scan_results is not None:
                     <body>
                     <div class="market-row" style="{row_bg}">
                         <div style="flex:2; color:#e6edf3; font-weight: 500; padding-right:10px;">
-                            {row['Market']} <span style="color:#3fb950; font-size:0.75rem; margin-left:8px; font-weight:bold;">★ Best Limit Target</span>
+                            {row['Market']} {target_tag}
                         </div>
                         <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
                             <div style="text-align:center">
@@ -718,7 +747,7 @@ if st.session_state.scan_results is not None:
                             </div>
                             <div class="spread-box">Spread {row['Spread']:.1f}¢</div>
                             <div style="text-align:center">
-                                <div class="price-btn-no">No Bid {row['NO']:.1f}¢</div>
+                                <div class="{no_btn_class}">{row['DisplayLabel']} {row['NO']:.1f}¢</div>
                                 <div class="depth-text">${row['NO_Depth']:,.0f}</div>
                             </div>
                         </div>
