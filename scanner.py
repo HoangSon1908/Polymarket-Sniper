@@ -314,7 +314,7 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                     
                     if pass_gap:
                         # KÈO 1: Có Ask bán sẵn <= ngưỡng cài đặt -> Mua Market khớp luôn
-                        if best_ask_cents is not None and best_ask_cents <= max_limit:
+                        if best_ask_cents is not None and min_limit <= best_ask_cents <= max_limit:
                             is_match = True
                             matched_price = best_ask_cents - 0.0001
                             target_type = "MARKET_BUY"
