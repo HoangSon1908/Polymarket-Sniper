@@ -313,17 +313,21 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                                     break
                     
                     if pass_gap:
-                        # KÈO 1: Có Ask bán sẵn <= ngưỡng cài đặt -> Mua Market khớp luôn
-                        if best_ask_cents is not None and min_limit <= best_ask_cents <= max_limit:
-                            is_match = True
-                            matched_price = best_ask_cents - 0.0001
-                            target_type = "MARKET_BUY"
-                        
-                        # KÈO 2: Mức max_limit trống, Best Bid thỏa mãn -> Kê Limit đón đầu
-                        elif min_limit <= best_bid_cents < max_limit:
-                            is_match = True
-                            matched_price = best_bid_cents
-                            target_type = "LIMIT_BID"
+                        # 1. Điều kiện tiên quyết: Best Bid BẮT BUỘC phải nằm từ min_limit trở lên
+                        has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
+
+                        if has_valid_bid:
+                            # KÈO 1: Có Ask bán sẵn và Ask <= max_limit -> Mua Market luôn
+                            if best_ask_cents is not None and best_ask_cents <= max_limit:
+                                is_match = True
+                                matched_price = best_ask_cents - 0.0001
+                                target_type = "MARKET_BUY"
+
+                            # KÈO 2: Không có Ask ngon (hoặc trống Ask), nhưng Bid chưa vượt trần max_limit -> Kê Limit đón đầu
+                            elif best_bid_cents < max_limit:
+                                is_match = True
+                                matched_price = best_bid_cents
+                                target_type = "LIMIT_BID"
 
                 if is_match:
                     event_has_match = True
