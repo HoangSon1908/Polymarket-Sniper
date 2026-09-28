@@ -98,6 +98,7 @@ DEFAULT_CONFIG = {
     "l_gap_value": 4,
 
     # Dùng chung
+    "only_market_buy": False,  # False: Place Limit, True: Buy Now (Ask)
     "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
@@ -313,17 +314,17 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                                     break
                     
                     if pass_gap:
-                        # 1. Điều kiện tiên quyết: Best Bid BẮT BUỘC phải nằm từ min_limit trở lên
+                        # ĐIỀU KIỆN TIÊN QUYẾT: Best Bid BẮT BUỘC phải nằm từ min_limit (>= 90¢) trở lên
                         has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
 
                         if has_valid_bid:
-                            # KÈO 1: Có Ask bán sẵn và Ask <= max_limit -> Mua Market luôn
+                            # KÈO 1: Có Ask bán sẵn <= max_limit -> Mua Market khớp luôn
                             if best_ask_cents is not None and best_ask_cents <= max_limit:
                                 is_match = True
                                 matched_price = best_ask_cents - 0.0001
                                 target_type = "MARKET_BUY"
-
-                            # KÈO 2: Không có Ask ngon (hoặc trống Ask), nhưng Bid chưa vượt trần max_limit -> Kê Limit đón đầu
+                            
+                            # KÈO 2: Trống Ask hoặc Ask chưa ngon, nhưng Bid chưa vượt trần -> Kê Limit đón đầu
                             elif best_bid_cents < max_limit:
                                 is_match = True
                                 matched_price = best_bid_cents
@@ -532,9 +533,18 @@ with st.container():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    col_msg, col_btn = st.columns([2, 1])
+    col_msg, col_mode, col_btn = st.columns([2, 1.2, 1])
     with col_msg: 
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ô xanh = NO Bid, Ô đỏ = NO Ask. Tự động tìm bracket ngon nhất đại diện cho market.</p>", unsafe_allow_html=True)
+    with col_mode:
+        only_market_buy = st.toggle(
+            "⚡ Chế độ Mua ngay (BUY NOW)", 
+            value=config.get("only_market_buy", False),
+            key="toggle_only_market_buy",
+            help="Bật: Chỉ hiển thị kèo Mua ngay (Market Buy) | Tắt: Chỉ hiển thị kèo Kê Limit (Place Limit)"
+        )
+        mode_text = "🟢 Đang lọc: <b>Mua ngay (Buy Now)</b>" if only_market_buy else "🟡 Đang lọc: <b>Kê Limit (Place Limit)</b>"
+        st.markdown(f"<p style='color:#9d8590; font-size:0.75rem; margin-top:-8px;'>{mode_text}</p>", unsafe_allow_html=True)
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -544,6 +554,7 @@ if search_clicked:
         st.warning("Please check at least one market type to scan (Highest or Lowest).")
     else:
         current_config = {
+            "only_market_buy": only_market_buy,
             "scan_highest": scan_highest,
             "h_min_p_no": h_min_p_no, "h_max_p_no": h_max_p_no, "h_filter_no": h_filter_no,
             "h_gap_filter_enabled": h_gap_filter_enabled, "h_gap_top_k": h_gap_top_k, "h_gap_value": h_gap_value,
@@ -602,12 +613,17 @@ if st.session_state.scan_results is not None:
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
 
+    # --- LỌC THEO NÚT GẠT: BẬT = MUA NGAY (MARKET_BUY), TẮT = KÊ LIMIT (LIMIT_BID) ---
+    if not df.empty:
+        target_wanted = "MARKET_BUY" if only_market_buy else "LIMIT_BID"
+        df = df[df['TargetType'] == target_wanted]
+
     sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
     matched_cities_count = len(sorted_cities)
 
     no_match_at_all = [c for c in actual_scanned_list if c not in sorted_cities]
-    filtered_list = [c for c in no_match_at_all if c in filtered_raw]
-    error_list = [c for c in no_match_at_all if c not in filtered_list]
+    error_list = [c for c in no_match_at_all if c in errors_raw]
+    filtered_list = [c for c in no_match_at_all if c not in error_list]
 
     # --- HEADER ROW & BADGES ---
     col_title, col_badges = st.columns([1.6, 2.6])
