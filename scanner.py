@@ -77,7 +77,9 @@ DEFAULT_FAVORITE_CITIES = [
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
+# --- DEFAULT CONFIG ---
 DEFAULT_CONFIG = {
+    # 1. Cài đặt Highest
     "scan_highest": True,
     "h_filter_no": True,
     "h_min_p_no": 90.0,
@@ -86,6 +88,7 @@ DEFAULT_CONFIG = {
     "h_gap_top_k": 2,
     "h_gap_value": 4,
 
+    # 2. Cài đặt Lowest
     "scan_lowest": True,
     "l_filter_no": True,
     "l_min_p_no": 90.0,
@@ -94,6 +97,7 @@ DEFAULT_CONFIG = {
     "l_gap_top_k": 2,
     "l_gap_value": 4,
 
+    # Dùng chung
     "only_market_buy": False,
     "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
@@ -160,7 +164,7 @@ def clear_all_flags():
 def parse_val(title):
     """
     Chuẩn hóa dải nhiệt độ để sắp xếp đúng thứ tự bracket:
-    Loại bỏ ngày/năm (e.g. October 1, 2026), xử lý or below / or higher.
+    Bỏ qua ngày/năm (vd: October 1, 2026), xử lý or below / or higher.
     """
     if not title:
         return 0.0
@@ -169,12 +173,12 @@ def parse_val(title):
     # Xóa sạch thông tin ngày tháng năm để tránh dính số của ngày/tháng/năm
     text = re.sub(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b)", "", text)
 
-    # 1. Dạng "X or below" -> đặt cận nhỏ để luôn xếp đầu
+    # 1. Dạng "X or below"
     m_below = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*below|or\s*lower|or\s*less)", text)
     if m_below:
         return float(m_below.group(1)) - 0.5
 
-    # 2. Dạng "X or higher" -> đặt cận lớn để luôn xếp cuối
+    # 2. Dạng "X or higher"
     m_above = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*higher|or\s*above|or\s*more)", text)
     if m_above:
         return float(m_above.group(1)) + 0.5
@@ -184,7 +188,7 @@ def parse_val(title):
     if m_range:
         return (float(m_range.group(1)) + float(m_range.group(2))) / 2.0
 
-    # 4. Fallback lấy số cuối cùng (thường là số nhiệt độ trước ký hiệu độ)
+    # 4. Fallback lấy số cuối cùng
     nums = re.findall(r"[-+]?\d+(?:\.\d+)?", text)
     return float(nums[-1]) if nums else 0.0
 
@@ -224,7 +228,7 @@ def get_bracket_prob(m, books):
             if not y_bids and not y_asks and not n_bids and not n_asks:
                 return -1.0
 
-            # 1. Ưu tiên 1: YES Best Bid (người thực tế đang sẵn sàng chi tiền mua YES)
+            # 1. Ưu tiên 1: YES Best Bid
             if y_bids:
                 valid_bids = [float(b["price"]) for b in y_bids if "price" in b]
                 if valid_bids:
@@ -245,7 +249,7 @@ def get_bracket_prob(m, books):
     except Exception:
         pass
 
-    # Fallback Gamma outcomePrices nhưng chỉ xét khi có volume thực tế
+    # Fallback Gamma outcomePrices chỉ khi có volume thực tế
     vol = float(m.get("volume", 0) or 0)
     if vol > 0:
         try:
@@ -299,13 +303,13 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
             # --- 1. SẮP XẾP MARKET THEO THỨ TỰ NHIỆT ĐỘ CHUẨN XÁC ---
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")))
 
-            # --- 2. TÌM TOP K BRACKET NEO CÓ XÁC SUẤT HOẶC THANH KHOẢN THẬT CAO NHẤT ---
+            # --- 2. TÌM TOP K BRACKET NEO CÓ THANH KHOẢN THẬT CAO NHẤT ---
             top_bracket_indices = []
             if type_cfg.get("gap_filter_enabled", False):
                 market_yes_candidates = []
                 for i, m in enumerate(sorted_markets):
                     prob = get_bracket_prob(m, books)
-                    if prob >= 0:  # Chỉ lấy các ô có giao dịch / thanh khoản thật
+                    if prob >= 0:
                         market_yes_candidates.append((i, prob))
                 
                 market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
@@ -527,7 +531,7 @@ with st.container():
 
     col_high, col_low = st.columns(2)
     
-    # HIGHEST
+    # 1. BẢNG HIGHEST
     with col_high:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_highest = st.checkbox("🔥 SCAN HIGHEST MARKETS", value=config.get("scan_highest", True), key="chk_scan_highest")
@@ -553,7 +557,7 @@ with st.container():
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{h_gap_value} ô từ Top {h_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # LOWEST
+    # 2. BẢNG LOWEST
     with col_low:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_lowest = st.checkbox("❄️ SCAN LOWEST MARKETS", value=config.get("scan_lowest", True), key="chk_scan_lowest")
@@ -572,10 +576,10 @@ with st.container():
         l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
         with l_g1:
             l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
-        with l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest):
-            pass
-        with l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest):
-            pass
+        with l_g2:
+            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
+        with l_g3:
+            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{l_gap_value} ô từ Top {l_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
