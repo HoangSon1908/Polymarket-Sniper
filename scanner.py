@@ -77,9 +77,7 @@ DEFAULT_FAVORITE_CITIES = [
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
-# --- DEFAULT CONFIG ---
 DEFAULT_CONFIG = {
-    # 1. Cài đặt Highest
     "scan_highest": True,
     "h_filter_no": True,
     "h_min_p_no": 90.0,
@@ -88,7 +86,6 @@ DEFAULT_CONFIG = {
     "h_gap_top_k": 2,
     "h_gap_value": 4,
 
-    # 2. Cài đặt Lowest
     "scan_lowest": True,
     "l_filter_no": True,
     "l_min_p_no": 90.0,
@@ -97,8 +94,7 @@ DEFAULT_CONFIG = {
     "l_gap_top_k": 2,
     "l_gap_value": 4,
 
-    # Dùng chung
-    "only_market_buy": False,  # False: Place Limit, True: Buy Now (Ask)
+    "only_market_buy": False,
     "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
@@ -162,14 +158,35 @@ def clear_all_flags():
     save_stored_data()
 
 def parse_val(title):
+    """
+    Chuẩn hóa dải nhiệt độ để sắp xếp đúng thứ tự bracket:
+    Loại bỏ ngày/năm (e.g. October 1, 2026), xử lý or below / or higher.
+    """
     if not title:
-        return None
-    nums = re.findall(r"[-+]?\d*\.\d+|\d+", title)
-    if not nums:
-        return None
-    if len(nums) >= 2:
-        return (float(nums[0]) + float(nums[1])) / 2
-    return float(nums[0])
+        return 0.0
+    text = str(title).lower()
+    
+    # Xóa sạch thông tin ngày tháng năm để tránh dính số của ngày/tháng/năm
+    text = re.sub(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b)", "", text)
+
+    # 1. Dạng "X or below" -> đặt cận nhỏ để luôn xếp đầu
+    m_below = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*below|or\s*lower|or\s*less)", text)
+    if m_below:
+        return float(m_below.group(1)) - 0.5
+
+    # 2. Dạng "X or higher" -> đặt cận lớn để luôn xếp cuối
+    m_above = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*higher|or\s*above|or\s*more)", text)
+    if m_above:
+        return float(m_above.group(1)) + 0.5
+
+    # 3. Dạng dải "66-67" hoặc "66 to 67"
+    m_range = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:-|to)\s*([-+]?\d+(?:\.\d+)?)", text)
+    if m_range:
+        return (float(m_range.group(1)) + float(m_range.group(2))) / 2.0
+
+    # 4. Fallback lấy số cuối cùng (thường là số nhiệt độ trước ký hiệu độ)
+    nums = re.findall(r"[-+]?\d+(?:\.\d+)?", text)
+    return float(nums[-1]) if nums else 0.0
 
 def get_target_dates(selected_date_labels):
     dates = []
@@ -187,26 +204,60 @@ def get_target_dates(selected_date_labels):
     return dates
 
 def get_bracket_prob(m, books):
-    """Lấy % hiển thị của bracket từ Gamma outcomePrices hoặc CLOB YES Ask."""
-    try:
-        raw_op = m.get("outcomePrices")
-        if raw_op:
-            prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
-            if prices and len(prices) > 0:
-                return float(prices[0]) * 100
-    except Exception:
-        pass
-    
+    """
+    Xác định xác suất hoặc giá YES mà thị trường thực sự tin tưởng nhất.
+    Lọc bỏ thanh khoản ảo (Ghost Liquidity) có Volume = 0 và orderbook rỗng.
+    """
     try:
         tokens = json.loads(m.get("clobTokenIds", "[]"))
-        if tokens:
-            y_book = books.get(tokens[0], {})
-            y_asks = y_book.get("asks", [])
-            if y_asks:
-                return float(min(y_asks, key=lambda x: float(x["price"]))["price"]) * 100
+        if len(tokens) >= 2:
+            yes_id, no_id = tokens[0], tokens[1]
+            yes_book = books.get(yes_id, {})
+            no_book = books.get(no_id, {})
+            
+            y_bids = yes_book.get("bids", [])
+            y_asks = yes_book.get("asks", [])
+            n_bids = no_book.get("bids", [])
+            n_asks = no_book.get("asks", [])
+
+            # Nếu cả hai bên không hề có lệnh chờ mua/bán thực tế -> Bỏ qua
+            if not y_bids and not y_asks and not n_bids and not n_asks:
+                return -1.0
+
+            # 1. Ưu tiên 1: YES Best Bid (người thực tế đang sẵn sàng chi tiền mua YES)
+            if y_bids:
+                valid_bids = [float(b["price"]) for b in y_bids if "price" in b]
+                if valid_bids:
+                    return max(valid_bids) * 100.0
+
+            # 2. Ưu tiên 2: Suy ngược từ NO Best Ask (1 - NO Ask = YES Bid)
+            if n_asks:
+                valid_n_asks = [float(a["price"]) for a in n_asks if "price" in a]
+                if valid_n_asks:
+                    return (1.0 - min(valid_n_asks)) * 100.0
+
+            # 3. Ưu tiên 3: YES Ask nếu ô đó có volume giao dịch hoặc có ai mua NO
+            vol = float(m.get("volume", 0) or 0)
+            if y_asks and (vol > 0 or n_bids):
+                valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
+                if valid_y_asks:
+                    return min(valid_y_asks) * 100.0
     except Exception:
         pass
-    return 0.0
+
+    # Fallback Gamma outcomePrices nhưng chỉ xét khi có volume thực tế
+    vol = float(m.get("volume", 0) or 0)
+    if vol > 0:
+        try:
+            raw_op = m.get("outcomePrices")
+            if raw_op:
+                prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
+                if prices and len(prices) > 0:
+                    return float(prices[0]) * 100.0
+        except Exception:
+            pass
+
+    return -1.0
 
 async def check_event(session, semaphore, city, date_info, m_type, type_cfg, matches_list, filtered_cities, error_cities):
     async with semaphore:
@@ -244,18 +295,21 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 books_data = await books_resp.json()
             
             books = {b["asset_id"]: b for b in books_data}
-            sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")) or 0)
+            
+            # --- 1. SẮP XẾP MARKET THEO THỨ TỰ NHIỆT ĐỘ CHUẨN XÁC ---
+            sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")))
 
-            # --- TÌM TOP K BRACKET CÓ XÁC SUẤT HOẶC GIÁ YES CAO NHẤT ---
+            # --- 2. TÌM TOP K BRACKET NEO CÓ XÁC SUẤT HOẶC THANH KHOẢN THẬT CAO NHẤT ---
             top_bracket_indices = []
             if type_cfg.get("gap_filter_enabled", False):
                 market_yes_candidates = []
                 for i, m in enumerate(sorted_markets):
                     prob = get_bracket_prob(m, books)
-                    market_yes_candidates.append((i, prob))
+                    if prob >= 0:  # Chỉ lấy các ô có giao dịch / thanh khoản thật
+                        market_yes_candidates.append((i, prob))
                 
                 market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
-                top_k = type_cfg.get("gap_top_k", 2)
+                top_k = int(type_cfg.get("gap_top_k", 2))
                 top_bracket_indices = [item[0] for item in market_yes_candidates[:top_k]]
             
             event_has_match = False
@@ -268,21 +322,21 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 
                 no_book = books.get(no_id, {})
                 
-                # 1. Trích xuất NO Bids (giá người ta đặt mua NO)
+                # Trích xuất NO Bids
                 n_bids = no_book.get("bids", [])
                 valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
                 best_no_bid = max(valid_no_bids) if valid_no_bids else None
                 best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if best_no_bid is not None else 0.0
                 best_bid_cents = round(best_no_bid * 100, 2) if best_no_bid is not None else 0.0
                 
-                # 2. Trích xuất NO Asks (giá người ta treo bán NO)
+                # Trích xuất NO Asks
                 n_asks = no_book.get("asks", [])
                 valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
                 best_no_ask = min(valid_no_asks) if valid_no_asks else None
                 best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if best_no_ask is not None else 0.0
                 best_ask_cents = round(best_no_ask * 100, 2) if best_no_ask is not None else None
                 
-                # Tính Spread giữa Ask và Bid của NO
+                # Spread NO
                 if best_no_ask is not None and best_no_bid is not None:
                     spread_val = round((best_no_ask - best_no_bid) * 100, 1)
                     spread_str = f"Spread {spread_val:.1f}¢"
@@ -293,7 +347,7 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 matched_price = 100.0
                 target_type = "LIMIT_BID"
                 
-                # --- KIỂM TRA ĐIỀU KIỆN ---
+                # --- 3. KIỂM TRA ĐIỀU KIỆN LỌC GAP VÀ GIÁ ---
                 if type_cfg.get("filter_no", True):
                     min_limit = type_cfg["min_p_no"]
                     max_limit = type_cfg["max_p_no"]
@@ -305,26 +359,22 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                             current_idx = idx
                             break
 
-                    # Kiểm tra khoảng cách Gap cố định né Top K (cả 2 phía)
+                    # Kiểm tra khoảng cách Gap đối với Top K bracket neo
                     if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
                         if current_idx != -1:
+                            gap_distance = int(type_cfg.get("gap_value", 4))
                             for ref_idx in top_bracket_indices:
-                                if abs(current_idx - ref_idx) <= type_cfg["gap_value"]:
+                                if abs(current_idx - ref_idx) <= gap_distance:
                                     pass_gap = False
                                     break
                     
                     if pass_gap:
-                        # ĐIỀU KIỆN TIÊN QUYẾT: Best Bid BẮT BUỘC phải nằm từ min_limit (>= 90¢) trở lên
                         has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
-
                         if has_valid_bid:
-                            # KÈO 1: Có Ask bán sẵn <= max_limit -> Mua Market khớp luôn
                             if best_ask_cents is not None and best_ask_cents <= max_limit:
                                 is_match = True
                                 matched_price = best_ask_cents - 0.0001
                                 target_type = "MARKET_BUY"
-                            
-                            # KÈO 2: Trống Ask hoặc Ask chưa ngon, nhưng Bid chưa vượt trần -> Kê Limit đón đầu
                             elif best_bid_cents < max_limit:
                                 is_match = True
                                 matched_price = best_bid_cents
@@ -475,12 +525,9 @@ with st.container():
 
     st.markdown("<hr style='border: 1px solid #3d1b2b; margin: 15px 0;'>", unsafe_allow_html=True)
 
-    # ==============================================================
-    # BẢNG ĐIỀU KHIỂN LIMIT & MARKET
-    # ==============================================================
     col_high, col_low = st.columns(2)
     
-    # 1. BẢNG HIGHEST
+    # HIGHEST
     with col_high:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_highest = st.checkbox("🔥 SCAN HIGHEST MARKETS", value=config.get("scan_highest", True), key="chk_scan_highest")
@@ -506,7 +553,7 @@ with st.container():
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{h_gap_value} ô từ Top {h_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. BẢNG LOWEST
+    # LOWEST
     with col_low:
         st.markdown('<div class="type-panel">', unsafe_allow_html=True)
         scan_lowest = st.checkbox("❄️ SCAN LOWEST MARKETS", value=config.get("scan_lowest", True), key="chk_scan_lowest")
@@ -525,17 +572,17 @@ with st.container():
         l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
         with l_g1:
             l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
-        with l_g2:
-            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
-        with l_g3:
-            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
+        with l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest):
+            pass
+        with l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest):
+            pass
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{l_gap_value} ô từ Top {l_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     col_msg, col_mode, col_btn = st.columns([2, 1.2, 1])
     with col_msg: 
-        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ô xanh = NO Bid, Ô đỏ = NO Ask. Tự động tìm bracket ngon nhất đại diện cho market.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ô xanh = NO Bid, Ô đỏ = NO Ask. Tự động loại bỏ thanh khoản ảo và né chính xác bracket neo.</p>", unsafe_allow_html=True)
     with col_mode:
         only_market_buy = st.toggle(
             "⚡ Chế độ Mua ngay (BUY NOW)", 
@@ -613,7 +660,6 @@ if st.session_state.scan_results is not None:
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
 
-    # --- LỌC THEO NÚT GẠT: BẬT = MUA NGAY (MARKET_BUY), TẮT = KÊ LIMIT (LIMIT_BID) ---
     if not df.empty:
         target_wanted = "MARKET_BUY" if only_market_buy else "LIMIT_BID"
         df = df[df['TargetType'] == target_wanted]
@@ -625,7 +671,6 @@ if st.session_state.scan_results is not None:
     error_list = [c for c in no_match_at_all if c in errors_raw]
     filtered_list = [c for c in no_match_at_all if c not in error_list]
 
-    # --- HEADER ROW & BADGES ---
     col_title, col_badges = st.columns([1.6, 2.6])
     with col_title:
         badge_color = "#ec4899" if matched_cities_count > 0 else "#f85149"
@@ -663,7 +708,6 @@ if st.session_state.scan_results is not None:
             
         st.markdown(f"<div style='margin-top: 10px;'>{badges_html}</div>", unsafe_allow_html=True)
 
-    # --- RENDER CARD FULL WIDTH ---
     if not df.empty:
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
@@ -701,7 +745,6 @@ if st.session_state.scan_results is not None:
                         btn_text = "Cancel Order" if is_ordered else "Order 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
-                    # Lấy ĐÚNG bracket có giá ngon nhất đại diện cho Market
                     row = event_markets.iloc[0]
                     safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
                     
