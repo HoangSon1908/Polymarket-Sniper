@@ -98,7 +98,6 @@ DEFAULT_CONFIG = {
     "l_gap_value": 4,
 
     # Dùng chung
-    "only_market_buy": False,
     "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
@@ -162,33 +161,23 @@ def clear_all_flags():
     save_stored_data()
 
 def parse_val(title):
-    """
-    Chuẩn hóa dải nhiệt độ để sắp xếp đúng thứ tự bracket:
-    Bỏ qua ngày/năm (vd: October 1, 2026), xử lý or below / or higher.
-    """
     if not title:
         return 0.0
     text = str(title).lower()
-    
-    # Xóa sạch thông tin ngày tháng năm để tránh dính số của ngày/tháng/năm
     text = re.sub(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b)", "", text)
 
-    # 1. Dạng "X or below"
     m_below = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*below|or\s*lower|or\s*less)", text)
     if m_below:
         return float(m_below.group(1)) - 0.5
 
-    # 2. Dạng "X or higher"
     m_above = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*higher|or\s*above|or\s*more)", text)
     if m_above:
         return float(m_above.group(1)) + 0.5
 
-    # 3. Dạng dải "66-67" hoặc "66 to 67"
     m_range = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:-|to)\s*([-+]?\d+(?:\.\d+)?)", text)
     if m_range:
         return (float(m_range.group(1)) + float(m_range.group(2))) / 2.0
 
-    # 4. Fallback lấy số cuối cùng
     nums = re.findall(r"[-+]?\d+(?:\.\d+)?", text)
     return float(nums[-1]) if nums else 0.0
 
@@ -208,10 +197,6 @@ def get_target_dates(selected_date_labels):
     return dates
 
 def get_bracket_prob(m, books):
-    """
-    Xác định xác suất hoặc giá YES mà thị trường thực sự tin tưởng nhất.
-    Lọc bỏ thanh khoản ảo (Ghost Liquidity) có Volume = 0 và orderbook rỗng.
-    """
     try:
         tokens = json.loads(m.get("clobTokenIds", "[]"))
         if len(tokens) >= 2:
@@ -224,23 +209,19 @@ def get_bracket_prob(m, books):
             n_bids = no_book.get("bids", [])
             n_asks = no_book.get("asks", [])
 
-            # Nếu cả hai bên không hề có lệnh chờ mua/bán thực tế -> Bỏ qua
             if not y_bids and not y_asks and not n_bids and not n_asks:
                 return -1.0
 
-            # 1. Ưu tiên 1: YES Best Bid
             if y_bids:
                 valid_bids = [float(b["price"]) for b in y_bids if "price" in b]
                 if valid_bids:
                     return max(valid_bids) * 100.0
 
-            # 2. Ưu tiên 2: Suy ngược từ NO Best Ask (1 - NO Ask = YES Bid)
             if n_asks:
                 valid_n_asks = [float(a["price"]) for a in n_asks if "price" in a]
                 if valid_n_asks:
                     return (1.0 - min(valid_n_asks)) * 100.0
 
-            # 3. Ưu tiên 3: YES Ask nếu ô đó có volume giao dịch hoặc có ai mua NO
             vol = float(m.get("volume", 0) or 0)
             if y_asks and (vol > 0 or n_bids):
                 valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
@@ -249,7 +230,6 @@ def get_bracket_prob(m, books):
     except Exception:
         pass
 
-    # Fallback Gamma outcomePrices chỉ khi có volume thực tế
     vol = float(m.get("volume", 0) or 0)
     if vol > 0:
         try:
@@ -299,11 +279,8 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 books_data = await books_resp.json()
             
             books = {b["asset_id"]: b for b in books_data}
-            
-            # --- 1. SẮP XẾP MARKET THEO THỨ TỰ NHIỆT ĐỘ CHUẨN XÁC ---
             sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")))
 
-            # --- 2. TÌM TOP K BRACKET NEO CÓ THANH KHOẢN THẬT CAO NHẤT ---
             top_bracket_indices = []
             if type_cfg.get("gap_filter_enabled", False):
                 market_yes_candidates = []
@@ -326,21 +303,18 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 
                 no_book = books.get(no_id, {})
                 
-                # Trích xuất NO Bids
                 n_bids = no_book.get("bids", [])
                 valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
                 best_no_bid = max(valid_no_bids) if valid_no_bids else None
                 best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if best_no_bid is not None else 0.0
                 best_bid_cents = round(best_no_bid * 100, 2) if best_no_bid is not None else 0.0
                 
-                # Trích xuất NO Asks
                 n_asks = no_book.get("asks", [])
                 valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
                 best_no_ask = min(valid_no_asks) if valid_no_asks else None
                 best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if best_no_ask is not None else 0.0
                 best_ask_cents = round(best_no_ask * 100, 2) if best_no_ask is not None else None
                 
-                # Spread NO
                 if best_no_ask is not None and best_no_bid is not None:
                     spread_val = round((best_no_ask - best_no_bid) * 100, 1)
                     spread_str = f"Spread {spread_val:.1f}¢"
@@ -351,7 +325,6 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                 matched_price = 100.0
                 target_type = "LIMIT_BID"
                 
-                # --- 3. KIỂM TRA ĐIỀU KIỆN LỌC GAP VÀ GIÁ ---
                 if type_cfg.get("filter_no", True):
                     min_limit = type_cfg["min_p_no"]
                     max_limit = type_cfg["max_p_no"]
@@ -363,7 +336,6 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                             current_idx = idx
                             break
 
-                    # Kiểm tra khoảng cách Gap đối với Top K bracket neo
                     if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
                         if current_idx != -1:
                             gap_distance = int(type_cfg.get("gap_value", 4))
@@ -375,10 +347,12 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                     if pass_gap:
                         has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
                         if has_valid_bid:
+                            # Khớp ngay nếu ask thỏa mãn ngưỡng max
                             if best_ask_cents is not None and best_ask_cents <= max_limit:
                                 is_match = True
                                 matched_price = best_ask_cents - 0.0001
                                 target_type = "MARKET_BUY"
+                            # Nếu không có Ask thỏa mãn nhưng Bid nằm trong tầm thì kê Limit
                             elif best_bid_cents < max_limit:
                                 is_match = True
                                 matched_price = best_bid_cents
@@ -584,18 +558,9 @@ with st.container():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    col_msg, col_mode, col_btn = st.columns([2, 1.2, 1])
+    col_msg, col_btn = st.columns([3, 1])
     with col_msg: 
-        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Ô xanh = NO Bid, Ô đỏ = NO Ask. Tự động loại bỏ thanh khoản ảo và né chính xác bracket neo.</p>", unsafe_allow_html=True)
-    with col_mode:
-        only_market_buy = st.toggle(
-            "⚡ Chế độ Mua ngay (BUY NOW)", 
-            value=config.get("only_market_buy", False),
-            key="toggle_only_market_buy",
-            help="Bật: Chỉ hiển thị kèo Mua ngay (Market Buy) | Tắt: Chỉ hiển thị kèo Kê Limit (Place Limit)"
-        )
-        mode_text = "🟢 Đang lọc: <b>Mua ngay (Buy Now)</b>" if only_market_buy else "🟡 Đang lọc: <b>Kê Limit (Place Limit)</b>"
-        st.markdown(f"<p style='color:#9d8590; font-size:0.75rem; margin-top:-8px;'>{mode_text}</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Tự động gộp <b>⚡ Mua ngay (Market Buy)</b> & <b>🎯 Kê Limit (Place Limit)</b>. Ô xanh = NO Bid, Ô đỏ = NO Ask.</p>", unsafe_allow_html=True)
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -605,7 +570,6 @@ if search_clicked:
         st.warning("Please check at least one market type to scan (Highest or Lowest).")
     else:
         current_config = {
-            "only_market_buy": only_market_buy,
             "scan_highest": scan_highest,
             "h_min_p_no": h_min_p_no, "h_max_p_no": h_max_p_no, "h_filter_no": h_filter_no,
             "h_gap_filter_enabled": h_gap_filter_enabled, "h_gap_top_k": h_gap_top_k, "h_gap_value": h_gap_value,
@@ -664,9 +628,10 @@ if st.session_state.scan_results is not None:
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
 
+    # Tự động gộp: Sắp xếp ưu tiên kèo MARKET_BUY (ăn ngay) lên trước LIMIT_BID (kê lệnh)
     if not df.empty:
-        target_wanted = "MARKET_BUY" if only_market_buy else "LIMIT_BID"
-        df = df[df['TargetType'] == target_wanted]
+        df["Priority"] = df["TargetType"].apply(lambda x: 0 if x == "MARKET_BUY" else 1)
+        df = df.sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
 
     sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
     matched_cities_count = len(sorted_cities)
@@ -678,7 +643,16 @@ if st.session_state.scan_results is not None:
     col_title, col_badges = st.columns([1.6, 2.6])
     with col_title:
         badge_color = "#ec4899" if matched_cities_count > 0 else "#f85149"
-        st.markdown(f"### Hunt Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span>", unsafe_allow_html=True)
+        
+        buy_now_cnt = len(df[df['TargetType'] == 'MARKET_BUY']) if not df.empty else 0
+        limit_cnt = len(df[df['TargetType'] == 'LIMIT_BID']) if not df.empty else 0
+        
+        st.markdown(
+            f"### Hunt Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span> "
+            f"<span style='background:#0d4429; color:#3fb950; padding:2px 8px; border-radius:8px; font-size:0.75rem'>⚡ {buy_now_cnt} Buy</span> "
+            f"<span style='background:#3a2d0c; color:#e3b341; padding:2px 8px; border-radius:8px; font-size:0.75rem'>🎯 {limit_cnt} Limit</span>", 
+            unsafe_allow_html=True
+        )
         
         if st.session_state.ordered_markets:
             ordered_summary = []
@@ -714,7 +688,7 @@ if st.session_state.scan_results is not None:
 
     if not df.empty:
         for city_name in sorted_cities:
-            city_results = df[df['City'] == city_name].sort_values(by="MatchedPrice", ascending=True)
+            city_results = df[df['City'] == city_name].sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
             with st.container():
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
                 
@@ -749,91 +723,92 @@ if st.session_state.scan_results is not None:
                         btn_text = "Cancel Order" if is_ordered else "Order 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
-                    row = event_markets.iloc[0]
-                    safe_id = re.sub(r'[^a-zA-Z0-9]', '', row['Market'] + row['City'])
-                    
-                    target_tag = (
-                        "<span style='background-color:#0d4429; color:#3fb950; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #3fb950;'>⚡ BUY NOW (ASK)</span>"
-                        if row.get('TargetType') == 'MARKET_BUY'
-                        else "<span style='background-color:#3a2d0c; color:#e3b341; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #e3b341;'>🎯 PLACE LIMIT</span>"
-                    )
-                    
-                    row_html = f"""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                    <style>
-                        body {{
-                            background-color: transparent;
-                            margin: 0;
-                            padding: 0;
-                            color: #e6edf3;
-                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                            overflow: hidden;
-                        }}
-                        .market-row {{
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            padding: 10px;
-                            font-size: 0.9rem;
-                            box-sizing: border-box;
-                            height: 68px;
-                        }}
-                        .price-btn-bid {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
-                        .price-btn-ask {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
-                        .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; text-align: center; min-width: 85px; }}
-                        .depth-text {{ color: #9d8590; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
-                        .copy-link {{ background-color: #ec4899; color: white !important; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s ease; }}
-                        .copy-link:hover {{ background-color: #f43f5e; }}
-                    </style>
-                    </head>
-                    <body>
-                    <div class="market-row" style="{row_bg}">
-                        <div style="flex:2; color:#e6edf3; font-weight: 500; padding-right:10px;">
-                            {row['Market']} {target_tag}
-                        </div>
-                        <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
-                            <div style="text-align:center">
-                                <div class="price-btn-bid">No Bid {row['NO_Bid_Display']}</div>
-                                <div class="depth-text">${row['NO_Bid_Depth']:,.0f}</div>
-                            </div>
-                            <div class="spread-box">{row['Spread_Display']}</div>
-                            <div style="text-align:center">
-                                <div class="price-btn-ask">No Ask {row['NO_Ask_Display']}</div>
-                                <div class="depth-text">${row['NO_Ask_Depth']:,.0f}</div>
-                            </div>
-                        </div>
-                        <div style="flex:1; text-align:right">
-                            <textarea id="txt_{safe_id}" style="position:absolute; left:-9999px;">{row['Link']}</textarea>
-                            <button id="btn_{safe_id}" onclick="copyToClipboard()" class="copy-link">Copy Link</button>
-                        </div>
-                    </div>
-                    <script>
-                    function copyToClipboard() {{
-                        var copyText = document.getElementById("txt_{safe_id}");
-                        copyText.select();
-                        copyText.setSelectionRange(0, 99999);
-                        try {{
-                            var successful = document.execCommand('copy');
-                            if (successful) {{
-                                var btn = document.getElementById("btn_{safe_id}");
-                                btn.innerText = "Copied!";
-                                btn.style.backgroundColor = "#ffb7c5";
-                                btn.style.color = "#4a1525";
-                                setTimeout(function() {{
-                                    btn.innerText = "Copy Link";
-                                    btn.style.backgroundColor = "#ec4899";
-                                    btn.style.color = "white";
-                                }}, 2000);
+                    # Duyệt qua tất cả các bracket đạt điều kiện của event (cả Buy Now lẫn Limit)
+                    for _, row in event_markets.iterrows():
+                        safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{row['Market']}_{row['City']}_{row['TargetType']}")
+                        
+                        target_tag = (
+                            "<span style='background-color:#0d4429; color:#3fb950; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #3fb950;'>⚡ BUY NOW (ASK)</span>"
+                            if row.get('TargetType') == 'MARKET_BUY'
+                            else "<span style='background-color:#3a2d0c; color:#e3b341; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #e3b341;'>🎯 PLACE LIMIT</span>"
+                        )
+                        
+                        row_html = f"""
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                        <style>
+                            body {{
+                                background-color: transparent;
+                                margin: 0;
+                                padding: 0;
+                                color: #e6edf3;
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                                overflow: hidden;
                             }}
-                        }} catch (err) {{}}
-                    }}
-                    </script>
-                    </body>
-                    </html>
-                    """
-                    st.components.v1.html(row_html, height=68)
+                            .market-row {{
+                                display: flex;
+                                align-items: center;
+                                justify-content: space-between;
+                                padding: 10px;
+                                font-size: 0.9rem;
+                                box-sizing: border-box;
+                                height: 68px;
+                            }}
+                            .price-btn-bid {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
+                            .price-btn-ask {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
+                            .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; text-align: center; min-width: 85px; }}
+                            .depth-text {{ color: #9d8590; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
+                            .copy-link {{ background-color: #ec4899; color: white !important; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s ease; }}
+                            .copy-link:hover {{ background-color: #f43f5e; }}
+                        </style>
+                        </head>
+                        <body>
+                        <div class="market-row" style="{row_bg}">
+                            <div style="flex:2; color:#e6edf3; font-weight: 500; padding-right:10px;">
+                                {row['Market']} {target_tag}
+                            </div>
+                            <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                                <div style="text-align:center">
+                                    <div class="price-btn-bid">No Bid {row['NO_Bid_Display']}</div>
+                                    <div class="depth-text">${row['NO_Bid_Depth']:,.0f}</div>
+                                </div>
+                                <div class="spread-box">{row['Spread_Display']}</div>
+                                <div style="text-align:center">
+                                    <div class="price-btn-ask">No Ask {row['NO_Ask_Display']}</div>
+                                    <div class="depth-text">${row['NO_Ask_Depth']:,.0f}</div>
+                                </div>
+                            </div>
+                            <div style="flex:1; text-align:right">
+                                <textarea id="txt_{safe_id}" style="position:absolute; left:-9999px;">{row['Link']}</textarea>
+                                <button id="btn_{safe_id}" onclick="copyToClipboard()" class="copy-link">Copy Link</button>
+                            </div>
+                        </div>
+                        <script>
+                        function copyToClipboard() {{
+                            var copyText = document.getElementById("txt_{safe_id}");
+                            copyText.select();
+                            copyText.setSelectionRange(0, 99999);
+                            try {{
+                                var successful = document.execCommand('copy');
+                                if (successful) {{
+                                    var btn = document.getElementById("btn_{safe_id}");
+                                    btn.innerText = "Copied!";
+                                    btn.style.backgroundColor = "#ffb7c5";
+                                    btn.style.color = "#4a1525";
+                                    setTimeout(function() {{
+                                        btn.innerText = "Copy Link";
+                                        btn.style.backgroundColor = "#ec4899";
+                                        btn.style.color = "white";
+                                    }}, 2000);
+                                }}
+                            }} catch (err) {{}}
+                        }}
+                        </script>
+                        </body>
+                        </html>
+                        """
+                        st.components.v1.html(row_html, height=68)
                     
                 st.markdown("</div>", unsafe_allow_html=True)
     else:
