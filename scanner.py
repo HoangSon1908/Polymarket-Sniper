@@ -72,7 +72,7 @@ DEFAULT_FAVORITE_CITIES = [
     "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Paris", "Milan", "Warsaw", "Madrid", 
-    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Shenzhen", "Munich"
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Shenzhen", "Munich", "Qingdao"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -100,7 +100,7 @@ DEFAULT_CONFIG = {
     # Dùng chung
     "selected_dates": ["Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Seoul"],
+    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Seoul"],
     "ordered_markets": [],
     "checked_markets": []
 }
