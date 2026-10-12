@@ -184,9 +184,14 @@ def parse_val(title):
 def get_target_dates(selected_date_labels):
     dates = []
     now = datetime.now()
-    label_map = {"Today": 0, "Tomorrow": 1, "Day After Tomorrow": 2}
+    label_map = {
+        "Yesterday": -1,
+        "Today": 0, 
+        "Tomorrow": 1, 
+        "Day After Tomorrow": 2
+    }
     if isinstance(selected_date_labels, str):
-        selected_date_labels = ["Today", "Tomorrow", "Day After Tomorrow"] if selected_date_labels == "All Days" else [selected_date_labels]
+        selected_date_labels = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"] if selected_date_labels == "All Days" else [selected_date_labels]
     for label in selected_date_labels:
         if label in label_map:
             d = now + timedelta(days=label_map[label])
@@ -498,8 +503,10 @@ with st.container():
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
     
+    date_options = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"]
     saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
-    selected_dates = st.multiselect("SELECT DATES", ["Today", "Tomorrow", "Day After Tomorrow"], default=saved_dates)
+    valid_saved_dates = [d for d in saved_dates if d in date_options]
+    selected_dates = st.multiselect("SELECT DATES", date_options, default=valid_saved_dates)
 
     st.markdown("<hr style='border: 1px solid #3d1b2b; margin: 15px 0;'>", unsafe_allow_html=True)
 
