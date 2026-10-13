@@ -98,7 +98,7 @@ DEFAULT_CONFIG = {
     "l_gap_value": 3,
 
     # Dùng chung
-    "selected_dates": ["Today"],
+    "selected_dates": ["Yesterday", "Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
     "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Seoul"],
     "ordered_markets": [],
