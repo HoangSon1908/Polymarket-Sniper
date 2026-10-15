@@ -4,14 +4,12 @@ import aiohttp
 import streamlit as st
 import pandas as pd
 import re
-import os
 from datetime import datetime, timedelta
 
 # --- CONSTANTS ---
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
-STORAGE_FILE = "storage_config.json"
 
 CITIES_DATA = [
     {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": ["highest", "lowest"], "status": "active"},
@@ -105,38 +103,6 @@ DEFAULT_CONFIG = {
     "checked_markets": []
 }
 
-def load_stored_data():
-    if os.path.exists(STORAGE_FILE):
-        try:
-            with open(STORAGE_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                cfg = DEFAULT_CONFIG.copy()
-                cfg.update(saved.get("config", {}))
-                return {
-                    "config": cfg,
-                    "ordered_markets": saved.get("ordered_markets", []),
-                    "checked_markets": saved.get("checked_markets", [])
-                }
-        except Exception:
-            pass
-    return {
-        "config": DEFAULT_CONFIG.copy(),
-        "ordered_markets": [],
-        "checked_markets": []
-    }
-
-def save_stored_data():
-    data_to_save = {
-        "config": st.session_state.current_config,
-        "ordered_markets": st.session_state.ordered_markets,
-        "checked_markets": st.session_state.checked_markets
-    }
-    try:
-        with open(STORAGE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        st.error(f"Config Write Error: {e}")
-
 def toggle_ordered_status(event_title):
     if event_title in st.session_state.ordered_markets:
         st.session_state.ordered_markets.remove(event_title)
@@ -144,7 +110,6 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.append(event_title)
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
-    save_stored_data()
 
 def toggle_checked_status(event_title):
     if event_title in st.session_state.checked_markets:
@@ -153,12 +118,10 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.append(event_title)
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
-    save_stored_data()
 
 def clear_all_flags():
     st.session_state.ordered_markets = []
     st.session_state.checked_markets = []
-    save_stored_data()
 
 def parse_val(title):
     if not title:
@@ -419,13 +382,13 @@ st.set_page_config(page_title="PolyWeather Limit Hunter", page_icon="🎯", layo
 
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
+# Khởi tạo state riêng biệt hoàn toàn cho từng phiên (không dùng file json)
 if "config_loaded" not in st.session_state:
-    stored_data = load_stored_data()
-    st.session_state.current_config = stored_data["config"]
+    st.session_state.current_config = DEFAULT_CONFIG.copy()
     st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
-    st.session_state.ordered_markets = stored_data["ordered_markets"]
-    st.session_state.checked_markets = stored_data["checked_markets"]
+    st.session_state.ordered_markets = []
+    st.session_state.checked_markets = []
     st.session_state.scan_results = None
     st.session_state.config_loaded = True
 
@@ -481,20 +444,17 @@ with st.container():
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
-            save_stored_data()
             st.rerun()
     with preset_col2:
         if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
-            save_stored_data()
             st.rerun()
     with preset_col3:
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
-            save_stored_data()
             st.rerun()
     with preset_col4:
         st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Clear all checked and ordered market flags for a new trading cycle.")
@@ -588,7 +548,6 @@ if search_clicked:
             "selected_dates": selected_dates, "selected_cities": selected_cities, "excluded_cities": excluded_cities
         }
         st.session_state.current_config = current_config
-        save_stored_data()
 
         highest_cfg = {
             "enabled": scan_highest,
