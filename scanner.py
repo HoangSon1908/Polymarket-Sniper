@@ -525,9 +525,12 @@ with st.container():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    col_msg, col_btn = st.columns([3, 1])
+    col_msg, col_toggle, col_btn = st.columns([2.3, 1.2, 1])
     with col_msg: 
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Tự động gộp <b>⚡ Mua ngay (Market Buy)</b> & <b>🎯 Kê Limit (Place Limit)</b>. Ô xanh = NO Bid, Ô đỏ = NO Ask.</p>", unsafe_allow_html=True)
+    with col_toggle:
+        st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+        only_buy_now = st.toggle("⚡ Chỉ kèo vào luôn", value=False, help="Chỉ hiển thị các kèo khớp ngay (Market Buy)")
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -593,6 +596,10 @@ if st.session_state.scan_results is not None:
     total_scanned_cities = len(actual_scanned_list)
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
+
+    # Lọc chỉ kèo vào luôn nếu nút toggle được bật
+    if only_buy_now and not df.empty:
+        df = df[df["TargetType"] == "MARKET_BUY"]
 
     # Tự động gộp: Sắp xếp ưu tiên kèo MARKET_BUY (ăn ngay) lên trước LIMIT_BID (kê lệnh)
     if not df.empty:
