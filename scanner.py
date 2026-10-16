@@ -316,12 +316,12 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                         has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
                         if has_valid_bid:
                             # Khớp ngay nếu ask thỏa mãn ngưỡng max
-                            if best_ask_cents is not None and best_ask_cents <= max_limit:
+                            if best_ask_cents is not None and (min_limit <= best_ask_cents <= max_limit):
                                 is_match = True
                                 matched_price = best_ask_cents - 0.0001
                                 target_type = "MARKET_BUY"
                             # Nếu không có Ask thỏa mãn nhưng Bid nằm trong tầm thì kê Limit
-                            elif best_bid_cents < max_limit:
+                            elif best_bid_cents is not None and (min_limit <= best_bid_cents < max_limit):
                                 is_match = True
                                 matched_price = best_bid_cents
                                 target_type = "LIMIT_BID"
