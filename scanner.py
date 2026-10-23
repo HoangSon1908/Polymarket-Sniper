@@ -1,4 +1,5 @@
 import json
+import os
 import asyncio
 import aiohttp
 import streamlit as st
@@ -7,6 +8,7 @@ import re
 from datetime import datetime, timedelta
 
 # --- CONSTANTS ---
+CONFIG_FILE = "config.json"
 GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
 CLOB_URL = "https://clob.polymarket.com"
 DEFAULT_CONCURRENCY = 20
@@ -103,6 +105,25 @@ DEFAULT_CONFIG = {
     "checked_markets": []
 }
 
+def load_saved_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                cfg = DEFAULT_CONFIG.copy()
+                cfg.update(saved)
+                return cfg
+        except Exception:
+            return DEFAULT_CONFIG.copy()
+    return DEFAULT_CONFIG.copy()
+
+def save_config_to_file(cfg):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Lỗi khi lưu cấu hình: {e}")
+
 def toggle_ordered_status(event_title):
     if event_title in st.session_state.ordered_markets:
         st.session_state.ordered_markets.remove(event_title)
@@ -110,6 +131,10 @@ def toggle_ordered_status(event_title):
         st.session_state.ordered_markets.append(event_title)
         if event_title in st.session_state.checked_markets:
             st.session_state.checked_markets.remove(event_title)
+    if "current_config" in st.session_state:
+        st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+        st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
+        save_config_to_file(st.session_state.current_config)
 
 def toggle_checked_status(event_title):
     if event_title in st.session_state.checked_markets:
@@ -118,10 +143,18 @@ def toggle_checked_status(event_title):
         st.session_state.checked_markets.append(event_title)
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
+    if "current_config" in st.session_state:
+        st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+        st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
+        save_config_to_file(st.session_state.current_config)
 
 def clear_all_flags():
     st.session_state.ordered_markets = []
     st.session_state.checked_markets = []
+    if "current_config" in st.session_state:
+        st.session_state.current_config["ordered_markets"] = []
+        st.session_state.current_config["checked_markets"] = []
+        save_config_to_file(st.session_state.current_config)
 
 def parse_val(title):
     if not title:
@@ -315,12 +348,10 @@ async def check_event(session, semaphore, city, date_info, m_type, type_cfg, mat
                     if pass_gap:
                         has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
                         if has_valid_bid:
-                            # Khớp ngay nếu ask thỏa mãn ngưỡng max
                             if best_ask_cents is not None and (min_limit <= best_ask_cents <= max_limit):
                                 is_match = True
                                 matched_price = best_ask_cents - 0.0001
                                 target_type = "MARKET_BUY"
-                            # Nếu không có Ask thỏa mãn nhưng Bid nằm trong tầm thì kê Limit
                             elif best_bid_cents is not None and (min_limit <= best_bid_cents < max_limit):
                                 is_match = True
                                 matched_price = best_bid_cents
@@ -382,13 +413,13 @@ st.set_page_config(page_title="PolyWeather Limit Hunter", page_icon="🎯", layo
 
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
-# Khởi tạo state riêng biệt hoàn toàn cho từng phiên (không dùng file json)
+# Khởi tạo state từ config.json lưu trên server
 if "config_loaded" not in st.session_state:
-    st.session_state.current_config = DEFAULT_CONFIG.copy()
+    st.session_state.current_config = load_saved_config()
     st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
-    st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", [])
-    st.session_state.ordered_markets = []
-    st.session_state.checked_markets = []
+    st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", DEFAULT_CONFIG.get("excluded_cities", []))
+    st.session_state.ordered_markets = st.session_state.current_config.get("ordered_markets", [])
+    st.session_state.checked_markets = st.session_state.current_config.get("checked_markets", [])
     st.session_state.scan_results = None
     st.session_state.config_loaded = True
 
@@ -439,32 +470,49 @@ with st.container():
     excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
     st.session_state.excluded_cities = excluded_cities
     
-    preset_col1, preset_col2, preset_col3, preset_col4 = st.columns([1.5, 1.5, 1, 1.5])
+    preset_col1, preset_col2, preset_col3, preset_col4, preset_col5 = st.columns([1.2, 1.2, 0.9, 1.5, 1.2])
     with preset_col1:
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            save_config_to_file(st.session_state.current_config)
             st.rerun()
     with preset_col2:
         if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            save_config_to_file(st.session_state.current_config)
             st.rerun()
     with preset_col3:
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
+            save_config_to_file(st.session_state.current_config)
             st.rerun()
     with preset_col4:
-        st.button("🧹 Reset Memory (Check/Order)", use_container_width=True, on_click=clear_all_flags, help="Clear all checked and ordered market flags for a new trading cycle.")
+        st.button("🧹 Reset Memory", use_container_width=True, on_click=clear_all_flags, help="Xóa cờ đánh dấu Checked và Ordered cho chu kỳ mới.")
+    with preset_col5:
+        if st.button("🔄 Reset Defaults", use_container_width=True, help="Khôi phục toàn bộ cài đặt gốc ban đầu"):
+            st.session_state.current_config = DEFAULT_CONFIG.copy()
+            st.session_state.selected_cities = DEFAULT_CONFIG["selected_cities"].copy()
+            st.session_state.excluded_cities = DEFAULT_CONFIG["excluded_cities"].copy()
+            st.session_state.ordered_markets = []
+            st.session_state.checked_markets = []
+            for k in ["chk_scan_highest", "chk_h_no", "num_h_min_no", "num_h_max_no", "chk_h_gap", "num_h_top_k", "num_h_gap",
+                     "chk_scan_lowest", "chk_l_no", "num_l_min_no", "num_l_max_no", "chk_l_gap", "num_l_top_k", "num_l_gap"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            save_config_to_file(DEFAULT_CONFIG)
+            st.toast("Đã khôi phục cài đặt mặc định!", icon="🔄")
+            st.rerun()
     
     city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
     selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
     st.session_state.selected_cities = selected_cities
     
     date_options = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"]
-    saved_dates = config.get("selected_dates", ["Today", "Tomorrow", "Day After Tomorrow"])
+    saved_dates = config.get("selected_dates", ["Yesterday", "Today"])
     valid_saved_dates = [d for d in saved_dates if d in date_options]
     selected_dates = st.multiselect("SELECT DATES", date_options, default=valid_saved_dates)
 
@@ -484,7 +532,7 @@ with st.container():
         with h_no2:
             h_min_p_no = st.number_input("MIN BID", min_value=0.0, max_value=100.0, value=config.get("h_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_min_no", disabled=not scan_highest)
         with h_no3:
-            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.8), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
+            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.9), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Ask ≤ {h_max_p_no:.1f}¢: Mua luôn | Trống {h_max_p_no:.1f}¢: Kê Limit)</p>", unsafe_allow_html=True)
 
         st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>HIGHEST GAP FILTER</p>", unsafe_allow_html=True)
@@ -510,7 +558,7 @@ with st.container():
         with l_no2:
             l_min_p_no = st.number_input("MIN BID", min_value=0.0, max_value=100.0, value=config.get("l_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_min_no", disabled=not scan_lowest)
         with l_no3:
-            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.8), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
+            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.9), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Ask ≤ {l_max_p_no:.1f}¢: Mua luôn | Trống {l_max_p_no:.1f}¢: Kê Limit)</p>", unsafe_allow_html=True)
             
         st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
@@ -518,19 +566,47 @@ with st.container():
         with l_g1:
             l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
         with l_g2:
-            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
+            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 1)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
         with l_g3:
-            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
+            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 3)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
         st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{l_gap_value} ô từ Top {l_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    col_msg, col_toggle, col_btn = st.columns([2.3, 1.2, 1])
+    col_msg, col_toggle, col_save, col_btn = st.columns([2.0, 1.2, 1.0, 1.1])
     with col_msg: 
         st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Tự động gộp <b>⚡ Mua ngay (Market Buy)</b> & <b>🎯 Kê Limit (Place Limit)</b>. Ô xanh = NO Bid, Ô đỏ = NO Ask.</p>", unsafe_allow_html=True)
     with col_toggle:
         st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
         only_buy_now = st.toggle("⚡ Chỉ kèo vào luôn", value=False, help="Chỉ hiển thị các kèo khớp ngay (Market Buy)")
+    with col_save:
+        if st.button("💾 Lưu Cài Đặt", use_container_width=True, help="Lưu cấu hình hiện tại để tự động tải lại trong các session tiếp theo"):
+            current_config = {
+                "scan_highest": scan_highest,
+                "h_filter_no": h_filter_no,
+                "h_min_p_no": h_min_p_no,
+                "h_max_p_no": h_max_p_no,
+                "h_gap_filter_enabled": h_gap_filter_enabled,
+                "h_gap_top_k": h_gap_top_k,
+                "h_gap_value": h_gap_value,
+                
+                "scan_lowest": scan_lowest,
+                "l_filter_no": l_filter_no,
+                "l_min_p_no": l_min_p_no,
+                "l_max_p_no": l_max_p_no,
+                "l_gap_filter_enabled": l_gap_filter_enabled,
+                "l_gap_top_k": l_gap_top_k,
+                "l_gap_value": l_gap_value,
+
+                "selected_dates": selected_dates,
+                "selected_cities": selected_cities,
+                "excluded_cities": excluded_cities,
+                "ordered_markets": st.session_state.ordered_markets,
+                "checked_markets": st.session_state.checked_markets
+            }
+            st.session_state.current_config = current_config
+            save_config_to_file(current_config)
+            st.toast("✅ Đã lưu thông số thành công cho các session sau!", icon="💾")
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -541,16 +617,29 @@ if search_clicked:
     else:
         current_config = {
             "scan_highest": scan_highest,
-            "h_min_p_no": h_min_p_no, "h_max_p_no": h_max_p_no, "h_filter_no": h_filter_no,
-            "h_gap_filter_enabled": h_gap_filter_enabled, "h_gap_top_k": h_gap_top_k, "h_gap_value": h_gap_value,
+            "h_filter_no": h_filter_no,
+            "h_min_p_no": h_min_p_no,
+            "h_max_p_no": h_max_p_no,
+            "h_gap_filter_enabled": h_gap_filter_enabled,
+            "h_gap_top_k": h_gap_top_k,
+            "h_gap_value": h_gap_value,
             
             "scan_lowest": scan_lowest,
-            "l_min_p_no": l_min_p_no, "l_max_p_no": l_max_p_no, "l_filter_no": l_filter_no,
-            "l_gap_filter_enabled": l_gap_filter_enabled, "l_gap_top_k": l_gap_top_k, "l_gap_value": l_gap_value,
+            "l_filter_no": l_filter_no,
+            "l_min_p_no": l_min_p_no,
+            "l_max_p_no": l_max_p_no,
+            "l_gap_filter_enabled": l_gap_filter_enabled,
+            "l_gap_top_k": l_gap_top_k,
+            "l_gap_value": l_gap_value,
 
-            "selected_dates": selected_dates, "selected_cities": selected_cities, "excluded_cities": excluded_cities
+            "selected_dates": selected_dates,
+            "selected_cities": selected_cities,
+            "excluded_cities": excluded_cities,
+            "ordered_markets": st.session_state.ordered_markets,
+            "checked_markets": st.session_state.checked_markets
         }
         st.session_state.current_config = current_config
+        save_config_to_file(current_config)
 
         highest_cfg = {
             "enabled": scan_highest,
@@ -597,11 +686,9 @@ if st.session_state.scan_results is not None:
 
     df = pd.DataFrame(results) if results else pd.DataFrame()
 
-    # Lọc chỉ kèo vào luôn nếu nút toggle được bật
     if only_buy_now and not df.empty:
         df = df[df["TargetType"] == "MARKET_BUY"]
 
-    # Tự động gộp: Sắp xếp ưu tiên kèo MARKET_BUY (ăn ngay) lên trước LIMIT_BID (kê lệnh)
     if not df.empty:
         df["Priority"] = df["TargetType"].apply(lambda x: 0 if x == "MARKET_BUY" else 1)
         df = df.sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
@@ -696,7 +783,6 @@ if st.session_state.scan_results is not None:
                         btn_text = "Cancel Order" if is_ordered else "Order 🚀"
                         st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
-                    # Duyệt qua tất cả các bracket đạt điều kiện của event (cả Buy Now lẫn Limit)
                     for _, row in event_markets.iterrows():
                         safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{row['Market']}_{row['City']}_{row['TargetType']}")
                         
