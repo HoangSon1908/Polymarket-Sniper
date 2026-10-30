@@ -72,7 +72,7 @@ DEFAULT_FAVORITE_CITIES = [
     "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
     "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
     "Amsterdam", "Cape Town", "Paris", "Milan", "Warsaw", "Madrid", 
-    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Shenzhen", "Munich"
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Shenzhen", "Munich", "Seoul"
 ]
 
 MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
@@ -82,7 +82,7 @@ DEFAULT_CONFIG = {
     # 1. Cài đặt Highest
     "scan_highest": True,
     "h_filter_no": True,
-    "h_min_p_no": 90.0,
+    "h_min_p_no": 95.0,
     "h_max_p_no": 99.9,
     "h_gap_filter_enabled": True,
     "h_gap_top_k": 2,
@@ -91,7 +91,7 @@ DEFAULT_CONFIG = {
     # 2. Cài đặt Lowest
     "scan_lowest": True,
     "l_filter_no": True,
-    "l_min_p_no": 90.0,
+    "l_min_p_no": 95.0,
     "l_max_p_no": 99.9,
     "l_gap_filter_enabled": True,
     "l_gap_top_k": 1,
@@ -100,7 +100,7 @@ DEFAULT_CONFIG = {
     # Dùng chung
     "selected_dates": ["Yesterday", "Today"],
     "selected_cities": DEFAULT_FAVORITE_CITIES,
-    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Seoul", "Qingdao"],
+    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Denver"],
     "ordered_markets": [],
     "checked_markets": []
 }
