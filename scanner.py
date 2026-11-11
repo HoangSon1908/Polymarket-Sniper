@@ -5,7 +5,7 @@ import aiohttp
 import streamlit as st
 import pandas as pd
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # --- CONSTANTS ---
 CONFIG_FILE = "config.json"
@@ -106,14 +106,11 @@ DEFAULT_CONFIG = {
 }
 
 # ==========================================
-# OOP CLASS: QUẢN LÝ THỜI GIAN CÁC THÀNH PHỐ
+# OOP CLASS: QUẢN LÝ THỜI GIAN & COUNTDOWN RESOLVE
 # ==========================================
-from datetime import datetime, timedelta, timezone
-
 class CityTimeManager:
-    """Quản lý thời gian các thành phố theo chuẩn UTC (hoạt động độc lập với timezone của server)"""
+    """Quản lý múi giờ UTC và đếm ngược thời gian đến 12h đêm (resolve) của Market"""
     
-    # Múi giờ chuẩn UTC của từng thành phố (UTC Offset)
     CITY_UTC_OFFSET = {
         # Châu Á & Trung Đông
         "Tokyo": 9, "Seoul": 9, "Busan": 9,
@@ -136,16 +133,44 @@ class CityTimeManager:
     }
 
     @classmethod
-    def get_local_time(cls, city_name: str) -> str:
+    def get_hours_until_resolve(cls, city_name: str, date_str: str) -> str:
+        """
+        Tính số tiếng từ hiện tại đến 23:59:59 (12h đêm) ngày target tại thành phố.
+        date_str: định dạng 'DD/MM/YYYY'
+        """
         offset = cls.CITY_UTC_OFFSET.get(city_name)
         if offset is None:
             return ""
-        # Luôn lấy giờ chuẩn UTC của thế giới rồi cộng/trừ offset
-        now_utc = datetime.now(timezone.utc)
-        local_time = now_utc + timedelta(hours=offset)
-        return local_time.strftime("%H:%M")
+        
+        try:
+            # 1. Thời gian hiện tại tại thành phố
+            now_utc = datetime.now(timezone.utc)
+            city_now = now_utc + timedelta(hours=offset)
+            
+            # 2. Mốc 23:59:59 đêm của ngày target
+            target_date = datetime.strptime(date_str, "%d/%m/%Y")
+            resolve_time = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
+            city_now_unaware = city_now.replace(tzinfo=timezone.utc)
+            
+            diff = resolve_time - city_now_unaware
+            total_seconds = int(diff.total_seconds())
+            
+            if total_seconds <= 0:
+                return "Đã hết hạn"
+            
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            
+            if hours > 0:
+                return f"còn {hours}h {minutes:02d}m"
+            else:
+                return f"còn {minutes}m"
+        except Exception:
+            return ""
+
+
 # ==========================================
-# OOP CLASS: QUẢN LÝ CẤU HÌNH VÀ BỘ NHỚ STATE
+# OOP CLASS: QUẢN LÝ CẤU HÌNH VÀ STATE
 # ==========================================
 class ConfigManager:
     """Quản lý việc nạp, lưu file cấu hình và cập nhật trạng thái session"""
@@ -813,21 +838,23 @@ if st.session_state.scan_results is not None:
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
             with st.container():
-                # Lấy giờ địa phương của thành phố thông qua CityTimeManager
-                local_time = CityTimeManager.get_local_time(city_name)
-                time_badge = f"<span style='color: #f472b6; font-size: 0.95rem; font-weight: normal;'>🕒 Giờ hiện tại: <b style='color:#ffffff;'>{local_time}</b></span>" if local_time else ""
-
-                st.markdown(f"""
-                <div class="result-card">
-                    <div class="city-header">
-                        <span>{city_name}</span>
-                        {time_badge}
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
                 
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     
+                    # Lấy ngày của event để tính thời gian còn lại đến resolve (23:59:59 đêm target)
+                    event_date = event_markets.iloc[0]['Date']
+                    time_left_str = CityTimeManager.get_hours_until_resolve(city_name, event_date)
+                    
+                    if time_left_str:
+                        if "hết hạn" in time_left_str:
+                            time_tag = f" &nbsp; <span style='background-color:#490e15; color:#f85149; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; font-weight:bold; border:1px solid #f85149;'>⏳ {time_left_str}</span>"
+                        else:
+                            time_tag = f" &nbsp; <span style='background-color:#26161f; color:#f472b6; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; font-weight:bold; border:1px solid #4a2335;'>⏳ {time_left_str}</span>"
+                    else:
+                        time_tag = ""
+
                     is_ordered = event_title in st.session_state.ordered_markets
                     is_checked = event_title in st.session_state.checked_markets
                     
@@ -846,7 +873,7 @@ if st.session_state.scan_results is not None:
                     
                     title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
                     with title_col:
-                        st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{badge}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{time_tag}{badge}</div>", unsafe_allow_html=True)
                     
                     with check_btn_col:
                         chk_text = "Uncheck" if is_checked else "Checked ✔"
