@@ -133,40 +133,46 @@ class CityTimeManager:
     }
 
     @classmethod
-    def get_hours_until_resolve(cls, city_name: str, date_str: str) -> str:
+    def get_resolve_info(cls, city_name: str, date_str: str):
         """
-        Tính số tiếng từ hiện tại đến 23:59:59 (12h đêm) ngày target tại thành phố.
-        date_str: định dạng 'DD/MM/YYYY'
+        Trả về (số giây còn lại, chuỗi hiển thị).
+        Nếu đã hết hạn, trả về (float('inf'), 'Đã hết hạn') để sắp xếp xuống cuối.
         """
         offset = cls.CITY_UTC_OFFSET.get(city_name)
         if offset is None:
-            return ""
+            return float('inf'), ""
         
         try:
-            # 1. Thời gian hiện tại tại thành phố
             now_utc = datetime.now(timezone.utc)
             city_now = now_utc + timedelta(hours=offset)
             
-            # 2. Mốc 23:59:59 đêm của ngày target
             target_date = datetime.strptime(date_str, "%d/%m/%Y")
             resolve_time = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
             city_now_unaware = city_now.replace(tzinfo=timezone.utc)
             
             diff = resolve_time - city_now_unaware
-            total_seconds = int(diff.total_seconds())
+            total_seconds = diff.total_seconds()
             
             if total_seconds <= 0:
-                return "Đã hết hạn"
+                return float('inf'), "Đã hết hạn"
             
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
             
-            if hours > 0:
-                return f"còn {hours}h {minutes:02d}m"
-            else:
-                return f"còn {minutes}m"
+            display_str = f"còn {hours}h {minutes:02d}m" if hours > 0 else f"còn {minutes}m"
+            return total_seconds, display_str
         except Exception:
-            return ""
+            return float('inf'), ""
+
+    @classmethod
+    def get_seconds_until_resolve(cls, city_name: str, date_str: str) -> float:
+        secs, _ = cls.get_resolve_info(city_name, date_str)
+        return secs
+
+    @classmethod
+    def get_hours_until_resolve(cls, city_name: str, date_str: str) -> str:
+        _, disp = cls.get_resolve_info(city_name, date_str)
+        return disp
 
 
 # ==========================================
@@ -777,11 +783,25 @@ if st.session_state.scan_results is not None:
     if only_buy_now and not df.empty:
         df = df[df["TargetType"] == "MARKET_BUY"]
 
+    # --- SẮP XẾP ƯU TIÊN THỜI GIAN GẦN RESOLVE NHẤT ---
     if not df.empty:
+        # Tính thời gian còn lại đến resolve (giây & display text)
+        df["SecondsUntilResolve"] = df.apply(lambda r: CityTimeManager.get_seconds_until_resolve(r["City"], r["Date"]), axis=1)
+        df["TimeLeftDisplay"] = df.apply(lambda r: CityTimeManager.get_hours_until_resolve(r["City"], r["Date"]), axis=1)
+        
+        # Priority: Market Buy (0) ưu tiên hơn Limit Bid (1)
         df["Priority"] = df["TargetType"].apply(lambda x: 0 if x == "MARKET_BUY" else 1)
-        df = df.sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
+        
+        # Sắp xếp các dòng: Gần resolve nhất -> Ưu tiên Buy -> Giá khớp
+        df = df.sort_values(by=["SecondsUntilResolve", "Priority", "MatchedPrice"], ascending=[True, True, True])
 
-    sorted_cities = df.groupby('City')['MatchedPrice'].min().sort_values(ascending=True).index if not df.empty else []
+    # Sắp xếp danh sách thành phố: Thành phố có market gần resolve nhất lên đầu
+    sorted_cities = (
+        df.groupby('City')
+        .agg({'SecondsUntilResolve': 'min', 'MatchedPrice': 'min'})
+        .sort_values(by=['SecondsUntilResolve', 'MatchedPrice'], ascending=[True, True])
+        .index if not df.empty else []
+    )
     matched_cities_count = len(sorted_cities)
 
     no_match_at_all = [c for c in actual_scanned_list if c not in sorted_cities]
@@ -836,16 +856,20 @@ if st.session_state.scan_results is not None:
 
     if not df.empty:
         for city_name in sorted_cities:
-            city_results = df[df['City'] == city_name].sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
+            # Sắp xếp các sự kiện trong thành phố theo thời gian resolve gần nhất
+            city_results = df[df['City'] == city_name].sort_values(
+                by=["SecondsUntilResolve", "Priority", "MatchedPrice"], 
+                ascending=[True, True, True]
+            )
             with st.container():
                 st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
                 
+                # Duyệt theo thứ tự các event_title đã được sắp xếp
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
                     
-                    # Lấy ngày của event để tính thời gian còn lại đến resolve (23:59:59 đêm target)
-                    event_date = event_markets.iloc[0]['Date']
-                    time_left_str = CityTimeManager.get_hours_until_resolve(city_name, event_date)
+                    # Lấy chuỗi đếm ngược thời gian
+                    time_left_str = event_markets.iloc[0]['TimeLeftDisplay']
                     
                     if time_left_str:
                         if "hết hạn" in time_left_str:
