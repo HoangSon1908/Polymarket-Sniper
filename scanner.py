@@ -108,40 +108,42 @@ DEFAULT_CONFIG = {
 # ==========================================
 # OOP CLASS: QUẢN LÝ THỜI GIAN CÁC THÀNH PHỐ
 # ==========================================
+from datetime import datetime, timedelta, timezone
+
 class CityTimeManager:
-    """Quản lý độ lệch thời gian giữa các thành phố so với giờ Việt Nam (UTC+7)"""
+    """Quản lý thời gian các thành phố theo chuẩn UTC (hoạt động độc lập với timezone của server)"""
     
-    # Số giờ chênh lệch so với giờ Việt Nam
-    CITY_DIFF_VN = {
+    # Múi giờ chuẩn UTC của từng thành phố (UTC Offset)
+    CITY_UTC_OFFSET = {
         # Châu Á & Trung Đông
-        "Tokyo": 2, "Seoul": 2, "Busan": 2,
-        "Beijing": 1, "Chengdu": 1, "Chongqing": 1, "Shanghai": 1,
-        "Shenzhen": 1, "Guangzhou": 1, "Wuhan": 1, "Qingdao": 1,
-        "Hong Kong": 1, "Taipei": 1, "Kuala Lumpur": 1, "Singapore": 1, "Manila": 1,
-        "Jakarta": 0, "Lucknow": -1.5, "Karachi": -2, "Jeddah": -4, "Tel Aviv": -5,
+        "Tokyo": 9, "Seoul": 9, "Busan": 9,
+        "Beijing": 8, "Chengdu": 8, "Chongqing": 8, "Shanghai": 8,
+        "Shenzhen": 8, "Guangzhou": 8, "Wuhan": 8, "Qingdao": 8,
+        "Hong Kong": 8, "Taipei": 8, "Kuala Lumpur": 8, "Singapore": 8, "Manila": 8,
+        "Jakarta": 7, "Lucknow": 5.5, "Karachi": 5, "Jeddah": 3, "Tel Aviv": 2,
 
         # Châu Âu & Châu Phi
-        "Moscow": -4, "Istanbul": -4, "Ankara": -4, "Helsinki": -5,
-        "Warsaw": -6, "Munich": -6, "Amsterdam": -6,
-        "Paris": -6, "Milan": -6, "Madrid": -6, "London": -7, "Cape Town": -5,
+        "Moscow": 3, "Istanbul": 3, "Ankara": 3, "Helsinki": 2,
+        "Warsaw": 1, "Munich": 1, "Amsterdam": 1,
+        "Paris": 1, "Milan": 1, "Madrid": 1, "London": 0, "Cape Town": 2, "Lagos": 1,
 
         # Châu Mỹ & Châu Đại Dương
-        "Toronto": -12, "New York": -12, "Miami": -12, "Atlanta": -12,
-        "Chicago": -13, "Dallas": -13, "Austin": -13, "Houston": -13,
-        "Mexico City": -13, "Panama City": -12, "Denver": -14,
-        "Los Angeles": -15, "San Francisco": -15, "Seattle": -15,
-        "Buenos Aires": -10, "São Paulo": -10, "Lagos": -6, "Wellington": 5
+        "Toronto": -5, "New York": -5, "Miami": -5, "Atlanta": -5,
+        "Chicago": -6, "Dallas": -6, "Austin": -6, "Houston": -6,
+        "Mexico City": -6, "Panama City": -5, "Denver": -7,
+        "Los Angeles": -8, "San Francisco": -8, "Seattle": -8,
+        "Buenos Aires": -3, "São Paulo": -3, "Wellington": 12
     }
 
     @classmethod
     def get_local_time(cls, city_name: str) -> str:
-        diff = cls.CITY_DIFF_VN.get(city_name)
-        if diff is None:
+        offset = cls.CITY_UTC_OFFSET.get(city_name)
+        if offset is None:
             return ""
-        local_time = datetime.now() + timedelta(hours=diff)
+        # Luôn lấy giờ chuẩn UTC của thế giới rồi cộng/trừ offset
+        now_utc = datetime.now(timezone.utc)
+        local_time = now_utc + timedelta(hours=offset)
         return local_time.strftime("%H:%M")
-
-
 # ==========================================
 # OOP CLASS: QUẢN LÝ CẤU HÌNH VÀ BỘ NHỚ STATE
 # ==========================================
