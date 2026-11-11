@@ -105,317 +105,378 @@ DEFAULT_CONFIG = {
     "checked_markets": []
 }
 
-def load_saved_config():
-    if os.path.exists(CONFIG_FILE):
+# ==========================================
+# OOP CLASS: QUẢN LÝ THỜI GIAN CÁC THÀNH PHỐ
+# ==========================================
+class CityTimeManager:
+    """Quản lý độ lệch thời gian giữa các thành phố so với giờ Việt Nam (UTC+7)"""
+    
+    # Số giờ chênh lệch so với giờ Việt Nam
+    CITY_DIFF_VN = {
+        # Châu Á & Trung Đông
+        "Tokyo": 2, "Seoul": 2, "Busan": 2,
+        "Beijing": 1, "Chengdu": 1, "Chongqing": 1, "Shanghai": 1,
+        "Shenzhen": 1, "Guangzhou": 1, "Wuhan": 1, "Qingdao": 1,
+        "Hong Kong": 1, "Taipei": 1, "Kuala Lumpur": 1, "Singapore": 1, "Manila": 1,
+        "Jakarta": 0, "Lucknow": -1.5, "Karachi": -2, "Jeddah": -4, "Tel Aviv": -5,
+
+        # Châu Âu & Châu Phi
+        "Moscow": -4, "Istanbul": -4, "Ankara": -4, "Helsinki": -5,
+        "Warsaw": -6, "Munich": -6, "Amsterdam": -6,
+        "Paris": -6, "Milan": -6, "Madrid": -6, "London": -7, "Cape Town": -5,
+
+        # Châu Mỹ & Châu Đại Dương
+        "Toronto": -12, "New York": -12, "Miami": -12, "Atlanta": -12,
+        "Chicago": -13, "Dallas": -13, "Austin": -13, "Houston": -13,
+        "Mexico City": -13, "Panama City": -12, "Denver": -14,
+        "Los Angeles": -15, "San Francisco": -15, "Seattle": -15,
+        "Buenos Aires": -10, "São Paulo": -10, "Lagos": -6, "Wellington": 5
+    }
+
+    @classmethod
+    def get_local_time(cls, city_name: str) -> str:
+        diff = cls.CITY_DIFF_VN.get(city_name)
+        if diff is None:
+            return ""
+        local_time = datetime.now() + timedelta(hours=diff)
+        return local_time.strftime("%H:%M")
+
+
+# ==========================================
+# OOP CLASS: QUẢN LÝ CẤU HÌNH VÀ BỘ NHỚ STATE
+# ==========================================
+class ConfigManager:
+    """Quản lý việc nạp, lưu file cấu hình và cập nhật trạng thái session"""
+
+    @staticmethod
+    def load_saved_config() -> dict:
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    cfg = DEFAULT_CONFIG.copy()
+                    cfg.update(saved)
+                    return cfg
+            except Exception:
+                return DEFAULT_CONFIG.copy()
+        return DEFAULT_CONFIG.copy()
+
+    @staticmethod
+    def save_config_to_file(cfg: dict):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                cfg = DEFAULT_CONFIG.copy()
-                cfg.update(saved)
-                return cfg
-        except Exception:
-            return DEFAULT_CONFIG.copy()
-    return DEFAULT_CONFIG.copy()
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            st.error(f"Lỗi khi lưu cấu hình: {e}")
 
-def save_config_to_file(cfg):
-    try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"Lỗi khi lưu cấu hình: {e}")
-
-def toggle_ordered_status(event_title):
-    if event_title in st.session_state.ordered_markets:
-        st.session_state.ordered_markets.remove(event_title)
-    else:
-        st.session_state.ordered_markets.append(event_title)
-        if event_title in st.session_state.checked_markets:
-            st.session_state.checked_markets.remove(event_title)
-    if "current_config" in st.session_state:
-        st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
-        st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
-        save_config_to_file(st.session_state.current_config)
-
-def toggle_checked_status(event_title):
-    if event_title in st.session_state.checked_markets:
-        st.session_state.checked_markets.remove(event_title)
-    else:
-        st.session_state.checked_markets.append(event_title)
+    @classmethod
+    def toggle_ordered_status(cls, event_title: str):
         if event_title in st.session_state.ordered_markets:
             st.session_state.ordered_markets.remove(event_title)
-    if "current_config" in st.session_state:
-        st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
-        st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
-        save_config_to_file(st.session_state.current_config)
+        else:
+            st.session_state.ordered_markets.append(event_title)
+            if event_title in st.session_state.checked_markets:
+                st.session_state.checked_markets.remove(event_title)
+        if "current_config" in st.session_state:
+            st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+            st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
+            cls.save_config_to_file(st.session_state.current_config)
 
-def clear_all_flags():
-    st.session_state.ordered_markets = []
-    st.session_state.checked_markets = []
-    if "current_config" in st.session_state:
-        st.session_state.current_config["ordered_markets"] = []
-        st.session_state.current_config["checked_markets"] = []
-        save_config_to_file(st.session_state.current_config)
+    @classmethod
+    def toggle_checked_status(cls, event_title: str):
+        if event_title in st.session_state.checked_markets:
+            st.session_state.checked_markets.remove(event_title)
+        else:
+            st.session_state.checked_markets.append(event_title)
+            if event_title in st.session_state.ordered_markets:
+                st.session_state.ordered_markets.remove(event_title)
+        if "current_config" in st.session_state:
+            st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+            st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
+            cls.save_config_to_file(st.session_state.current_config)
 
-def parse_val(title):
-    if not title:
-        return 0.0
-    text = str(title).lower()
-    text = re.sub(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b)", "", text)
+    @classmethod
+    def clear_all_flags(cls):
+        st.session_state.ordered_markets = []
+        st.session_state.checked_markets = []
+        if "current_config" in st.session_state:
+            st.session_state.current_config["ordered_markets"] = []
+            st.session_state.current_config["checked_markets"] = []
+            cls.save_config_to_file(st.session_state.current_config)
 
-    m_below = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*below|or\s*lower|or\s*less)", text)
-    if m_below:
-        return float(m_below.group(1)) - 0.5
 
-    m_above = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*higher|or\s*above|or\s*more)", text)
-    if m_above:
-        return float(m_above.group(1)) + 0.5
+# ==========================================
+# OOP CLASS: QUÉT VÀ PHÂN TÍCH POLYMARKET
+# ==========================================
+class MarketScanner:
+    """Xử lý phân tích bracket, kết nối API Polymarket và lọc market"""
 
-    m_range = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:-|to)\s*([-+]?\d+(?:\.\d+)?)", text)
-    if m_range:
-        return (float(m_range.group(1)) + float(m_range.group(2))) / 2.0
+    @staticmethod
+    def parse_val(title: str) -> float:
+        if not title:
+            return 0.0
+        text = str(title).lower()
+        text = re.sub(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b)", "", text)
 
-    nums = re.findall(r"[-+]?\d+(?:\.\d+)?", text)
-    return float(nums[-1]) if nums else 0.0
+        m_below = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*below|or\s*lower|or\s*less)", text)
+        if m_below:
+            return float(m_below.group(1)) - 0.5
 
-def get_target_dates(selected_date_labels):
-    dates = []
-    now = datetime.now()
-    label_map = {
-        "Yesterday": -1,
-        "Today": 0, 
-        "Tomorrow": 1, 
-        "Day After Tomorrow": 2
-    }
-    if isinstance(selected_date_labels, str):
-        selected_date_labels = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"] if selected_date_labels == "All Days" else [selected_date_labels]
-    for label in selected_date_labels:
-        if label in label_map:
-            d = now + timedelta(days=label_map[label])
-            dates.append({
-                "slug": f"{MONTH_NAMES[d.month-1]}-{d.day}-{d.year}",
-                "display": d.strftime("%d/%m/%Y")
-            })
-    return dates
+        m_above = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*higher|or\s*above|or\s*more)", text)
+        if m_above:
+            return float(m_above.group(1)) + 0.5
 
-def get_bracket_prob(m, books):
-    try:
-        tokens = json.loads(m.get("clobTokenIds", "[]"))
-        if len(tokens) >= 2:
-            yes_id, no_id = tokens[0], tokens[1]
-            yes_book = books.get(yes_id, {})
-            no_book = books.get(no_id, {})
-            
-            y_bids = yes_book.get("bids", [])
-            y_asks = yes_book.get("asks", [])
-            n_bids = no_book.get("bids", [])
-            n_asks = no_book.get("asks", [])
+        m_range = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:-|to)\s*([-+]?\d+(?:\.\d+)?)", text)
+        if m_range:
+            return (float(m_range.group(1)) + float(m_range.group(2))) / 2.0
 
-            if not y_bids and not y_asks and not n_bids and not n_asks:
-                return -1.0
+        nums = re.findall(r"[-+]?\d+(?:\.\d+)?", text)
+        return float(nums[-1]) if nums else 0.0
 
-            if y_bids:
-                valid_bids = [float(b["price"]) for b in y_bids if "price" in b]
-                if valid_bids:
-                    return max(valid_bids) * 100.0
+    @staticmethod
+    def get_target_dates(selected_date_labels) -> list:
+        dates = []
+        now = datetime.now()
+        label_map = {
+            "Yesterday": -1,
+            "Today": 0, 
+            "Tomorrow": 1, 
+            "Day After Tomorrow": 2
+        }
+        if isinstance(selected_date_labels, str):
+            selected_date_labels = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"] if selected_date_labels == "All Days" else [selected_date_labels]
+        for label in selected_date_labels:
+            if label in label_map:
+                d = now + timedelta(days=label_map[label])
+                dates.append({
+                    "slug": f"{MONTH_NAMES[d.month-1]}-{d.day}-{d.year}",
+                    "display": d.strftime("%d/%m/%Y")
+                })
+        return dates
 
-            if n_asks:
-                valid_n_asks = [float(a["price"]) for a in n_asks if "price" in a]
-                if valid_n_asks:
-                    return (1.0 - min(valid_n_asks)) * 100.0
-
-            vol = float(m.get("volume", 0) or 0)
-            if y_asks and (vol > 0 or n_bids):
-                valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
-                if valid_y_asks:
-                    return min(valid_y_asks) * 100.0
-    except Exception:
-        pass
-
-    vol = float(m.get("volume", 0) or 0)
-    if vol > 0:
+    @staticmethod
+    def get_bracket_prob(m: dict, books: dict) -> float:
         try:
-            raw_op = m.get("outcomePrices")
-            if raw_op:
-                prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
-                if prices and len(prices) > 0:
-                    return float(prices[0]) * 100.0
+            tokens = json.loads(m.get("clobTokenIds", "[]"))
+            if len(tokens) >= 2:
+                yes_id, no_id = tokens[0], tokens[1]
+                yes_book = books.get(yes_id, {})
+                no_book = books.get(no_id, {})
+                
+                y_bids = yes_book.get("bids", [])
+                y_asks = yes_book.get("asks", [])
+                n_bids = no_book.get("bids", [])
+                n_asks = no_book.get("asks", [])
+
+                if not y_bids and not y_asks and not n_bids and not n_asks:
+                    return -1.0
+
+                if y_bids:
+                    valid_bids = [float(b["price"]) for b in y_bids if "price" in b]
+                    if valid_bids:
+                        return max(valid_bids) * 100.0
+
+                if n_asks:
+                    valid_n_asks = [float(a["price"]) for a in n_asks if "price" in a]
+                    if valid_n_asks:
+                        return (1.0 - min(valid_n_asks)) * 100.0
+
+                vol = float(m.get("volume", 0) or 0)
+                if y_asks and (vol > 0 or n_bids):
+                    valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
+                    if valid_y_asks:
+                        return min(valid_y_asks) * 100.0
         except Exception:
             pass
 
-    return -1.0
+        vol = float(m.get("volume", 0) or 0)
+        if vol > 0:
+            try:
+                raw_op = m.get("outcomePrices")
+                if raw_op:
+                    prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
+                    if prices and len(prices) > 0:
+                        return float(prices[0]) * 100.0
+            except Exception:
+                pass
 
-async def check_event(session, semaphore, city, date_info, m_type, type_cfg, matches_list, filtered_cities, error_cities):
-    async with semaphore:
-        slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
-        try:
-            async with session.get(f"{GAMMA_URL}/{slug}") as resp:
-                if resp.status != 200: 
+        return -1.0
+
+    @classmethod
+    async def check_event(cls, session, semaphore, city, date_info, m_type, type_cfg, matches_list, filtered_cities, error_cities):
+        async with semaphore:
+            slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
+            try:
+                async with session.get(f"{GAMMA_URL}/{slug}") as resp:
+                    if resp.status != 200: 
+                        error_cities.append(city["name"])
+                        return
+                    event = await resp.json()
+                markets = event.get("markets", [])
+                if not markets: 
                     error_cities.append(city["name"])
                     return
-                event = await resp.json()
-            markets = event.get("markets", [])
-            if not markets: 
-                error_cities.append(city["name"])
-                return
-            
-            book_reqs = []
-            market_map = {}
-            for m in markets:
-                tokens = json.loads(m.get("clobTokenIds", "[]"))
-                if len(tokens) < 2:
-                    continue
-                yes_id, no_id = tokens[0], tokens[1]
-                book_reqs.extend([{"token_id": yes_id}, {"token_id": no_id}])
-                market_map[yes_id] = {"m": m, "side": "YES", "other": no_id, "event": event}
-                market_map[no_id] = {"m": m, "side": "NO", "other": yes_id, "event": event}
-            
-            if not book_reqs: 
-                error_cities.append(city["name"])
-                return
-            
-            async with session.post(f"{CLOB_URL}/books", json=book_reqs) as books_resp:
-                if books_resp.status != 200: 
+                
+                book_reqs = []
+                market_map = {}
+                for m in markets:
+                    tokens = json.loads(m.get("clobTokenIds", "[]"))
+                    if len(tokens) < 2:
+                        continue
+                    yes_id, no_id = tokens[0], tokens[1]
+                    book_reqs.extend([{"token_id": yes_id}, {"token_id": no_id}])
+                    market_map[yes_id] = {"m": m, "side": "YES", "other": no_id, "event": event}
+                    market_map[no_id] = {"m": m, "side": "NO", "other": yes_id, "event": event}
+                
+                if not book_reqs: 
                     error_cities.append(city["name"])
                     return
-                books_data = await books_resp.json()
-            
-            books = {b["asset_id"]: b for b in books_data}
-            sorted_markets = sorted(markets, key=lambda m: parse_val(m.get("groupItemTitle") or m.get("question")))
+                
+                async with session.post(f"{CLOB_URL}/books", json=book_reqs) as books_resp:
+                    if books_resp.status != 200: 
+                        error_cities.append(city["name"])
+                        return
+                    books_data = await books_resp.json()
+                
+                books = {b["asset_id"]: b for b in books_data}
+                sorted_markets = sorted(markets, key=lambda m: cls.parse_val(m.get("groupItemTitle") or m.get("question")))
 
-            top_bracket_indices = []
-            if type_cfg.get("gap_filter_enabled", False):
-                market_yes_candidates = []
-                for i, m in enumerate(sorted_markets):
-                    prob = get_bracket_prob(m, books)
-                    if prob >= 0:
-                        market_yes_candidates.append((i, prob))
-                
-                market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
-                top_k = int(type_cfg.get("gap_top_k", 2))
-                top_bracket_indices = [item[0] for item in market_yes_candidates[:top_k]]
-            
-            event_has_match = False
-            for yes_id, info in market_map.items():
-                if info["side"] != "YES":
-                    continue
-                m = info["m"]
-                no_id = info["other"]
-                evt = info["event"]
-                
-                no_book = books.get(no_id, {})
-                
-                n_bids = no_book.get("bids", [])
-                valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
-                best_no_bid = max(valid_no_bids) if valid_no_bids else None
-                best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if best_no_bid is not None else 0.0
-                best_bid_cents = round(best_no_bid * 100, 2) if best_no_bid is not None else 0.0
-                
-                n_asks = no_book.get("asks", [])
-                valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
-                best_no_ask = min(valid_no_asks) if valid_no_asks else None
-                best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if best_no_ask is not None else 0.0
-                best_ask_cents = round(best_no_ask * 100, 2) if best_no_ask is not None else None
-                
-                if best_no_ask is not None and best_no_bid is not None:
-                    spread_val = round((best_no_ask - best_no_bid) * 100, 1)
-                    spread_str = f"Spread {spread_val:.1f}¢"
-                else:
-                    spread_str = "Spread —"
-
-                is_match = False
-                matched_price = 100.0
-                target_type = "LIMIT_BID"
-                
-                if type_cfg.get("filter_no", True):
-                    min_limit = type_cfg["min_p_no"]
-                    max_limit = type_cfg["max_p_no"]
+                top_bracket_indices = []
+                if type_cfg.get("gap_filter_enabled", False):
+                    market_yes_candidates = []
+                    for i, m in enumerate(sorted_markets):
+                        prob = cls.get_bracket_prob(m, books)
+                        if prob >= 0:
+                            market_yes_candidates.append((i, prob))
                     
-                    pass_gap = True
-                    current_idx = -1
-                    for idx, sm in enumerate(sorted_markets):
-                        if sm['id'] == m['id']:
-                            current_idx = idx
-                            break
-
-                    if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
-                        if current_idx != -1:
-                            gap_distance = int(type_cfg.get("gap_value", 4))
-                            for ref_idx in top_bracket_indices:
-                                if abs(current_idx - ref_idx) <= gap_distance:
-                                    pass_gap = False
-                                    break
+                    market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
+                    top_k = int(type_cfg.get("gap_top_k", 2))
+                    top_bracket_indices = [item[0] for item in market_yes_candidates[:top_k]]
+                
+                event_has_match = False
+                for yes_id, info in market_map.items():
+                    if info["side"] != "YES":
+                        continue
+                    m = info["m"]
+                    no_id = info["other"]
+                    evt = info["event"]
                     
-                    if pass_gap:
-                        has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
-                        if has_valid_bid:
-                            if best_ask_cents is not None and (min_limit <= best_ask_cents <= max_limit):
-                                is_match = True
-                                matched_price = best_ask_cents - 0.0001
-                                target_type = "MARKET_BUY"
-                            elif best_bid_cents is not None and (min_limit <= best_bid_cents < max_limit):
-                                is_match = True
-                                matched_price = best_bid_cents
-                                target_type = "LIMIT_BID"
+                    no_book = books.get(no_id, {})
+                    
+                    n_bids = no_book.get("bids", [])
+                    valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
+                    best_no_bid = max(valid_no_bids) if valid_no_bids else None
+                    best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if best_no_bid is not None else 0.0
+                    best_bid_cents = round(best_no_bid * 100, 2) if best_no_bid is not None else 0.0
+                    
+                    n_asks = no_book.get("asks", [])
+                    valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
+                    best_no_ask = min(valid_no_asks) if valid_no_asks else None
+                    best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if best_no_ask is not None else 0.0
+                    best_ask_cents = round(best_no_ask * 100, 2) if best_no_ask is not None else None
+                    
+                    if best_no_ask is not None and best_no_bid is not None:
+                        spread_val = round((best_no_ask - best_no_bid) * 100, 1)
+                        spread_str = f"Spread {spread_val:.1f}¢"
+                    else:
+                        spread_str = "Spread —"
 
-                if is_match:
-                    event_has_match = True
-                    matches_list.append({
-                        "City": city["name"], 
-                        "Date": date_info["display"], 
-                        "Type": "Highest" if m_type == "highest" else "Lowest",
-                        "Market": m.get("groupItemTitle") or m.get("question"), 
-                        "NO_Bid_Display": f"{best_bid_cents:.1f}¢" if best_no_bid is not None else "Trống",
-                        "NO_Bid_Depth": best_bid_depth,
-                        "NO_Ask_Display": f"{best_ask_cents:.1f}¢" if best_no_ask is not None else "Trống",
-                        "NO_Ask_Depth": best_ask_depth,
-                        "Spread_Display": spread_str,
-                        "MatchedPrice": matched_price,
-                        "TargetType": target_type,
-                        "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
-                        "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
-                    })
+                    is_match = False
+                    matched_price = 100.0
+                    target_type = "LIMIT_BID"
+                    
+                    if type_cfg.get("filter_no", True):
+                        min_limit = type_cfg["min_p_no"]
+                        max_limit = type_cfg["max_p_no"]
+                        
+                        pass_gap = True
+                        current_idx = -1
+                        for idx, sm in enumerate(sorted_markets):
+                            if sm['id'] == m['id']:
+                                current_idx = idx
+                                break
+
+                        if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
+                            if current_idx != -1:
+                                gap_distance = int(type_cfg.get("gap_value", 4))
+                                for ref_idx in top_bracket_indices:
+                                    if abs(current_idx - ref_idx) <= gap_distance:
+                                        pass_gap = False
+                                        break
+                        
+                        if pass_gap:
+                            has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
+                            if has_valid_bid:
+                                if best_ask_cents is not None and (min_limit <= best_ask_cents <= max_limit):
+                                    is_match = True
+                                    matched_price = best_ask_cents - 0.0001
+                                    target_type = "MARKET_BUY"
+                                elif best_bid_cents is not None and (min_limit <= best_bid_cents < max_limit):
+                                    is_match = True
+                                    matched_price = best_bid_cents
+                                    target_type = "LIMIT_BID"
+
+                    if is_match:
+                        event_has_match = True
+                        matches_list.append({
+                            "City": city["name"], 
+                            "Date": date_info["display"], 
+                            "Type": "Highest" if m_type == "highest" else "Lowest",
+                            "Market": m.get("groupItemTitle") or m.get("question"), 
+                            "NO_Bid_Display": f"{best_bid_cents:.1f}¢" if best_no_bid is not None else "Trống",
+                            "NO_Bid_Depth": best_bid_depth,
+                            "NO_Ask_Display": f"{best_ask_cents:.1f}¢" if best_no_ask is not None else "Trống",
+                            "NO_Ask_Depth": best_ask_depth,
+                            "Spread_Display": spread_str,
+                            "MatchedPrice": matched_price,
+                            "TargetType": target_type,
+                            "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
+                            "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
+                        })
+                
+                if not event_has_match:
+                    filtered_cities.append(city["name"])
+
+            except Exception:
+                error_cities.append(city["name"])
+
+    @classmethod
+    async def run_scan(cls, highest_cfg, lowest_cfg, selected_cities, excluded_cities, selected_dates):
+        cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
+        if excluded_cities:
+            cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
+        if selected_cities:
+            cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
             
-            if not event_has_match:
-                filtered_cities.append(city["name"])
-
-        except Exception:
-            error_cities.append(city["name"])
-
-async def run_scan(highest_cfg, lowest_cfg, selected_cities, excluded_cities, selected_dates):
-    cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
-    if excluded_cities:
-        cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
-    if selected_cities:
-        cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
+        dates = cls.get_target_dates(selected_dates)
+        matches_list = []
+        filtered_cities = []
+        error_cities = []
+        semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
         
-    dates = get_target_dates(selected_dates)
-    matches_list = []
-    filtered_cities = []
-    error_cities = []
-    semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
-    
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for city in cities_to_scan:
-            m_types = city.get("marketType", ["highest", "lowest"])
-            if not isinstance(m_types, list): 
-                m_types = [m_types]
-            for d in dates:
-                if highest_cfg["enabled"] and "highest" in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, "highest", highest_cfg, matches_list, filtered_cities, error_cities))
-                if lowest_cfg["enabled"] and "lowest" in m_types:
-                    tasks.append(check_event(session, semaphore, city, d, "lowest", lowest_cfg, matches_list, filtered_cities, error_cities))
-        await asyncio.gather(*tasks)
-    return matches_list, list(set(filtered_cities)), list(set(error_cities))
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for city in cities_to_scan:
+                m_types = city.get("marketType", ["highest", "lowest"])
+                if not isinstance(m_types, list): 
+                    m_types = [m_types]
+                for d in dates:
+                    if highest_cfg["enabled"] and "highest" in m_types:
+                        tasks.append(cls.check_event(session, semaphore, city, d, "highest", highest_cfg, matches_list, filtered_cities, error_cities))
+                    if lowest_cfg["enabled"] and "lowest" in m_types:
+                        tasks.append(cls.check_event(session, semaphore, city, d, "lowest", lowest_cfg, matches_list, filtered_cities, error_cities))
+            await asyncio.gather(*tasks)
+        return matches_list, list(set(filtered_cities)), list(set(error_cities))
+
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="PolyWeather Limit Hunter", page_icon="🎯", layout="wide")
 
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
-# Khởi tạo state từ config.json lưu trên server
+# Khởi tạo state từ config.json lưu trên server qua ConfigManager
 if "config_loaded" not in st.session_state:
-    st.session_state.current_config = load_saved_config()
+    st.session_state.current_config = ConfigManager.load_saved_config()
     st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
     st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", DEFAULT_CONFIG.get("excluded_cities", []))
     st.session_state.ordered_markets = st.session_state.current_config.get("ordered_markets", [])
@@ -432,7 +493,7 @@ st.markdown("""
     .filter-box { background-color: #1c1116; padding: 20px; border-radius: 12px; border: 1px solid #4a2335; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(236,72,153,0.1); }
     .type-panel { background-color: #170d12; border: 1px solid #3d1b2b; border-radius: 10px; padding: 15px; margin-top: 5px; }
     .result-card { background-color: #1c1116; border: 1px solid #4a2335; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(236,72,153,0.05); }
-    .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
+    .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
     
     .price-btn-bid { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }
     .price-btn-ask { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }
@@ -475,23 +536,23 @@ with st.container():
         if st.button("Morning Cities", use_container_width=True): 
             st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
-            save_config_to_file(st.session_state.current_config)
+            ConfigManager.save_config_to_file(st.session_state.current_config)
             st.rerun()
     with preset_col2:
         if st.button("Evening Cities", use_container_width=True):
             morning_set = set(DEFAULT_FAVORITE_CITIES)
             st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
             st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
-            save_config_to_file(st.session_state.current_config)
+            ConfigManager.save_config_to_file(st.session_state.current_config)
             st.rerun()
     with preset_col3:
         if st.button("Clear All", use_container_width=True): 
             st.session_state.selected_cities = []
             st.session_state.current_config["selected_cities"] = []
-            save_config_to_file(st.session_state.current_config)
+            ConfigManager.save_config_to_file(st.session_state.current_config)
             st.rerun()
     with preset_col4:
-        st.button("🧹 Reset Memory", use_container_width=True, on_click=clear_all_flags, help="Xóa cờ đánh dấu Checked và Ordered cho chu kỳ mới.")
+        st.button("🧹 Reset Memory", use_container_width=True, on_click=ConfigManager.clear_all_flags, help="Xóa cờ đánh dấu Checked và Ordered cho chu kỳ mới.")
     with preset_col5:
         if st.button("🔄 Reset Defaults", use_container_width=True, help="Khôi phục toàn bộ cài đặt gốc ban đầu"):
             st.session_state.current_config = DEFAULT_CONFIG.copy()
@@ -503,7 +564,7 @@ with st.container():
                      "chk_scan_lowest", "chk_l_no", "num_l_min_no", "num_l_max_no", "chk_l_gap", "num_l_top_k", "num_l_gap"]:
                 if k in st.session_state:
                     del st.session_state[k]
-            save_config_to_file(DEFAULT_CONFIG)
+            ConfigManager.save_config_to_file(DEFAULT_CONFIG)
             st.toast("Đã khôi phục cài đặt mặc định!", icon="🔄")
             st.rerun()
     
@@ -605,7 +666,7 @@ with st.container():
                 "checked_markets": st.session_state.checked_markets
             }
             st.session_state.current_config = current_config
-            save_config_to_file(current_config)
+            ConfigManager.save_config_to_file(current_config)
             st.toast("✅ Đã lưu thông số thành công cho các session sau!", icon="💾")
     with col_btn: 
         search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
@@ -639,7 +700,7 @@ if search_clicked:
             "checked_markets": st.session_state.checked_markets
         }
         st.session_state.current_config = current_config
-        save_config_to_file(current_config)
+        ConfigManager.save_config_to_file(current_config)
 
         highest_cfg = {
             "enabled": scan_highest,
@@ -662,7 +723,7 @@ if search_clicked:
         }
 
         with st.spinner("Hunting Opportunities..."):
-            res, filt, err = asyncio.run(run_scan(
+            res, filt, err = asyncio.run(MarketScanner.run_scan(
                 highest_cfg, lowest_cfg,
                 selected_cities, excluded_cities, selected_dates
             ))
@@ -750,7 +811,17 @@ if st.session_state.scan_results is not None:
         for city_name in sorted_cities:
             city_results = df[df['City'] == city_name].sort_values(by=["Priority", "MatchedPrice"], ascending=[True, True])
             with st.container():
-                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
+                # Lấy giờ địa phương của thành phố thông qua CityTimeManager
+                local_time = CityTimeManager.get_local_time(city_name)
+                time_badge = f"<span style='color: #f472b6; font-size: 0.95rem; font-weight: normal;'>🕒 Giờ hiện tại: <b style='color:#ffffff;'>{local_time}</b></span>" if local_time else ""
+
+                st.markdown(f"""
+                <div class="result-card">
+                    <div class="city-header">
+                        <span>{city_name}</span>
+                        {time_badge}
+                    </div>
+                """, unsafe_allow_html=True)
                 
                 for event_title in city_results['EventTitle'].unique():
                     event_markets = city_results[city_results['EventTitle'] == event_title]
@@ -777,11 +848,11 @@ if st.session_state.scan_results is not None:
                     
                     with check_btn_col:
                         chk_text = "Uncheck" if is_checked else "Checked ✔"
-                        st.button(chk_text, key=f"chk_{event_title}", on_click=toggle_checked_status, args=(event_title,), use_container_width=True)
+                        st.button(chk_text, key=f"chk_{event_title}", on_click=ConfigManager.toggle_checked_status, args=(event_title,), use_container_width=True)
                         
                     with order_btn_col:
                         btn_text = "Cancel Order" if is_ordered else "Order 🚀"
-                        st.button(btn_text, key=f"btn_{event_title}", on_click=toggle_ordered_status, args=(event_title,), use_container_width=True)
+                        st.button(btn_text, key=f"btn_{event_title}", on_click=ConfigManager.toggle_ordered_status, args=(event_title,), use_container_width=True)
                     
                     for _, row in event_markets.iterrows():
                         safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{row['Market']}_{row['City']}_{row['TargetType']}")
