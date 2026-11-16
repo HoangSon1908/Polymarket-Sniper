@@ -1,664 +1,1002 @@
-import time
-from datetime import datetime, timedelta, timezone
-import numpy as np
-import requests
-import pandas as pd
+import json
+import os
+import asyncio
+import aiohttp
 import streamlit as st
+import pandas as pd
+import re
+from datetime import datetime, timedelta, timezone
 
-st.set_page_config(
-    page_title="Polymarket Copy Signal Scanner",
-    page_icon="⚡",
-    layout="wide",
-)
+# --- CONSTANTS ---
+CONFIG_FILE = "config.json"
+GAMMA_URL = "https://gamma-api.polymarket.com/events/slug"
+CLOB_URL = "https://clob.polymarket.com"
+DEFAULT_CONCURRENCY = 20
 
-POSITIONS_URL = "https://data-api.polymarket.com/v2/positions"
-CLOB_BOOKS_URL = "https://clob.polymarket.com/books"
-DEFAULT_WALLET = "0xc9bfc7986767173b4f1c3fc9b2c6b255fc7381c0"
-VN_TZ = timezone(timedelta(hours=7))
+CITIES_DATA = [
+    {"key": "seattle", "name": "Seattle", "polymarketCity": "seattle", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "losangeles", "name": "Los Angeles", "polymarketCity": "los-angeles", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "sanfrancisco", "name": "San Francisco", "polymarketCity": "san-francisco", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "denver", "name": "Denver", "polymarketCity": "denver", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "chicago", "name": "Chicago", "polymarketCity": "chicago", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "dallas", "name": "Dallas", "polymarketCity": "dallas", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "austin", "name": "Austin", "polymarketCity": "austin", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "houston", "name": "Houston", "polymarketCity": "houston", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "mexicocity", "name": "Mexico City", "polymarketCity": "mexico-city", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "panamacity", "name": "Panama City", "polymarketCity": "panama-city", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "miami", "name": "Miami", "polymarketCity": "miami", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "atlanta", "name": "Atlanta", "polymarketCity": "atlanta", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "nyc", "name": "New York", "polymarketCity": "nyc", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "toronto", "name": "Toronto", "polymarketCity": "toronto", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "buenosaires", "name": "Buenos Aires", "polymarketCity": "buenos-aires", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "saopaulo", "name": "São Paulo", "polymarketCity": "sao-paulo", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "london", "name": "London", "polymarketCity": "london", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "lagos", "name": "Lagos", "polymarketCity": "lagos", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "amsterdam", "name": "Amsterdam", "polymarketCity": "amsterdam", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "paris", "name": "Paris", "polymarketCity": "paris", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "munich", "name": "Munich", "polymarketCity": "munich", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "milan", "name": "Milan", "polymarketCity": "milan", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "madrid", "name": "Madrid", "polymarketCity": "madrid", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "warsaw", "name": "Warsaw", "polymarketCity": "warsaw", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "helsinki", "name": "Helsinki", "polymarketCity": "helsinki", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "capetown", "name": "Cape Town", "polymarketCity": "cape-town", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "telaviv", "name": "Tel Aviv", "polymarketCity": "tel-aviv", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "moscow", "name": "Moscow", "polymarketCity": "moscow", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "istanbul", "name": "Istanbul", "polymarketCity": "istanbul", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "ankara", "name": "Ankara", "polymarketCity": "ankara", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "jeddah", "name": "Jeddah", "polymarketCity": "jeddah", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "karachi", "name": "Karachi", "polymarketCity": "karachi", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "lucknow", "name": "Lucknow", "polymarketCity": "lucknow", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "kualalumpur", "name": "Kuala Lumpur", "polymarketCity": "kuala-lumpur", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "jakarta", "name": "Jakarta", "polymarketCity": "jakarta", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "singapore", "name": "Singapore", "polymarketCity": "singapore", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "hongkong", "name": "Hong Kong", "polymarketCity": "hong-kong", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "beijing", "name": "Beijing", "polymarketCity": "beijing", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "chengdu", "name": "Chengdu", "polymarketCity": "chengdu", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "chongqing", "name": "Chongqing", "polymarketCity": "chongqing", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "shanghai", "name": "Shanghai", "polymarketCity": "shanghai", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "shenzhen", "name": "Shenzhen", "polymarketCity": "shenzhen", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "taipei", "name": "Taipei", "polymarketCity": "taipei", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "qingdao", "name": "Qingdao", "polymarketCity": "qingdao", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "wuhan", "name": "Wuhan", "polymarketCity": "wuhan", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "guangzhou", "name": "Guangzhou", "polymarketCity": "guangzhou", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "manila", "name": "Manila", "polymarketCity": "manila", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "seoul", "name": "Seoul", "polymarketCity": "seoul", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "busan", "name": "Busan", "polymarketCity": "busan", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "tokyo", "name": "Tokyo", "polymarketCity": "tokyo", "marketType": ["highest", "lowest"], "status": "active"},
+    {"key": "wellington", "name": "Wellington", "polymarketCity": "wellington", "marketType": ["highest", "lowest"], "status": "active"}
+]
 
+DEFAULT_FAVORITE_CITIES = [
+    "Tokyo", "Busan", "Singapore", "Shanghai", "Wuhan", "Chengdu", 
+    "Chongqing", "Beijing", "Kuala Lumpur", "Manila", 
+    "Guangzhou", "Lucknow", "Karachi", "Jeddah", "Tel Aviv", 
+    "Amsterdam", "Cape Town", "Paris", "Milan", "Warsaw", "Madrid", 
+    "London", "Ankara", "Helsinki", "Istanbul", "Moscow", "Wellington", "Taipei", "Shenzhen", "Munich", "Seoul"
+]
 
-def fetch_positions_v2(wallet: str, status_val: str) -> list[dict]:
-    """Kéo vị thế theo chuẩn Polymarket Data API v2 (lọc status + phân trang cursor)."""
-    rows = []
-    params = {
-        "user": wallet.strip(),
-        "status": status_val,
-        "limit": 500,
+MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+
+# --- DEFAULT CONFIG ---
+DEFAULT_CONFIG = {
+    # 1. Cài đặt Highest
+    "scan_highest": True,
+    "h_filter_no": True,
+    "h_min_p_no": 80.0,
+    "h_max_p_no": 99.9,
+    "h_gap_filter_enabled": True,
+    "h_gap_top_k": 2,
+    "h_gap_value": 4,
+
+    # 2. Cài đặt Lowest
+    "scan_lowest": True,
+    "l_filter_no": True,
+    "l_min_p_no": 80.0,
+    "l_max_p_no": 99.9,
+    "l_gap_filter_enabled": True,
+    "l_gap_top_k": 1,
+    "l_gap_value": 3,
+
+    # Dùng chung
+    "selected_dates": ["Yesterday", "Today"],
+    "selected_cities": DEFAULT_FAVORITE_CITIES,
+    "excluded_cities": ["Lagos", "Hong Kong", "Jakarta", "Qingdao", "Denver"],
+    "ordered_markets": [],
+    "checked_markets": []
+}
+
+# ==========================================
+# OOP CLASS: QUẢN LÝ THỜI GIAN & COUNTDOWN RESOLVE
+# ==========================================
+class CityTimeManager:
+    """Quản lý múi giờ UTC và đếm ngược thời gian đến 12h đêm (resolve) của Market"""
+    
+    CITY_UTC_OFFSET = {
+        # Châu Á & Trung Đông
+        "Tokyo": 9, "Seoul": 9, "Busan": 9,
+        "Beijing": 8, "Chengdu": 8, "Chongqing": 8, "Shanghai": 8,
+        "Shenzhen": 8, "Guangzhou": 8, "Wuhan": 8, "Qingdao": 8,
+        "Hong Kong": 8, "Taipei": 8, "Kuala Lumpur": 8, "Singapore": 8, "Manila": 8,
+        "Jakarta": 7, "Lucknow": 5.5, "Karachi": 5, "Jeddah": 3, "Tel Aviv": 2,
+
+        # Châu Âu & Châu Phi
+        "Moscow": 3, "Istanbul": 3, "Ankara": 3, "Helsinki": 2,
+        "Warsaw": 1, "Munich": 1, "Amsterdam": 1,
+        "Paris": 1, "Milan": 1, "Madrid": 1, "London": 0, "Cape Town": 2, "Lagos": 1,
+
+        # Châu Mỹ & Châu Đại Dương
+        "Toronto": -5, "New York": -5, "Miami": -5, "Atlanta": -5,
+        "Chicago": -6, "Dallas": -6, "Austin": -6, "Houston": -6,
+        "Mexico City": -6, "Panama City": -5, "Denver": -7,
+        "Los Angeles": -8, "San Francisco": -8, "Seattle": -8,
+        "Buenos Aires": -3, "São Paulo": -3, "Wellington": 12
     }
 
-    for _ in range(50):
-        res = requests.get(POSITIONS_URL, params=params, timeout=15)
-        if res.status_code == 429:
-            time.sleep(2.0)
-            continue
-        res.raise_for_status()
-        payload = res.json()
+    @classmethod
+    def get_resolve_info(cls, city_name: str, date_str: str):
+        """
+        Trả về (số giây còn lại, chuỗi hiển thị).
+        Nếu đã hết hạn, trả về (float('inf'), 'Đã hết hạn') để sắp xếp xuống cuối.
+        """
+        offset = cls.CITY_UTC_OFFSET.get(city_name)
+        if offset is None:
+            return float('inf'), ""
+        
+        try:
+            now_utc = datetime.now(timezone.utc)
+            city_now = now_utc + timedelta(hours=offset)
+            
+            target_date = datetime.strptime(date_str, "%d/%m/%Y")
+            resolve_time = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, tzinfo=timezone.utc)
+            city_now_unaware = city_now.replace(tzinfo=timezone.utc)
+            
+            diff = resolve_time - city_now_unaware
+            total_seconds = diff.total_seconds()
+            
+            if total_seconds <= 0:
+                return float('inf'), "Đã hết hạn"
+            
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            
+            display_str = f"còn {hours}h {minutes:02d}m" if hours > 0 else f"còn {minutes}m"
+            return total_seconds, display_str
+        except Exception:
+            return float('inf'), ""
 
-        batch = payload.get("data") or []
-        rows.extend(batch)
+    @classmethod
+    def get_seconds_until_resolve(cls, city_name: str, date_str: str) -> float:
+        secs, _ = cls.get_resolve_info(city_name, date_str)
+        return secs
 
-        pagination = payload.get("pagination") or {}
-        next_cursor = pagination.get("next_cursor")
-        has_more = pagination.get("has_more", False)
+    @classmethod
+    def get_hours_until_resolve(cls, city_name: str, date_str: str) -> str:
+        _, disp = cls.get_resolve_info(city_name, date_str)
+        return disp
 
-        if not next_cursor or not has_more:
-            break
 
-        # API v2 dùng cursor-only, giữ nguyên user & status và không truyền offset
-        params = {
-            "user": wallet.strip(),
-            "status": status_val,
-            "cursor": next_cursor,
+# ==========================================
+# OOP CLASS: QUẢN LÝ CẤU HÌNH VÀ STATE
+# ==========================================
+class ConfigManager:
+    """Quản lý việc nạp, lưu file cấu hình và cập nhật trạng thái session"""
+
+    @staticmethod
+    def load_saved_config() -> dict:
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    cfg = DEFAULT_CONFIG.copy()
+                    cfg.update(saved)
+                    return cfg
+            except Exception:
+                return DEFAULT_CONFIG.copy()
+        return DEFAULT_CONFIG.copy()
+
+    @staticmethod
+    def save_config_to_file(cfg: dict):
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            st.error(f"Lỗi khi lưu cấu hình: {e}")
+
+    @classmethod
+    def toggle_ordered_status(cls, event_title: str):
+        if event_title in st.session_state.ordered_markets:
+            st.session_state.ordered_markets.remove(event_title)
+        else:
+            st.session_state.ordered_markets.append(event_title)
+            if event_title in st.session_state.checked_markets:
+                st.session_state.checked_markets.remove(event_title)
+        if "current_config" in st.session_state:
+            st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+            st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
+            cls.save_config_to_file(st.session_state.current_config)
+
+    @classmethod
+    def toggle_checked_status(cls, event_title: str):
+        if event_title in st.session_state.checked_markets:
+            st.session_state.checked_markets.remove(event_title)
+        else:
+            st.session_state.checked_markets.append(event_title)
+            if event_title in st.session_state.ordered_markets:
+                st.session_state.ordered_markets.remove(event_title)
+        if "current_config" in st.session_state:
+            st.session_state.current_config["ordered_markets"] = st.session_state.ordered_markets
+            st.session_state.current_config["checked_markets"] = st.session_state.checked_markets
+            cls.save_config_to_file(st.session_state.current_config)
+
+    @classmethod
+    def clear_all_flags(cls):
+        st.session_state.ordered_markets = []
+        st.session_state.checked_markets = []
+        if "current_config" in st.session_state:
+            st.session_state.current_config["ordered_markets"] = []
+            st.session_state.current_config["checked_markets"] = []
+            cls.save_config_to_file(st.session_state.current_config)
+
+
+# ==========================================
+# OOP CLASS: QUÉT VÀ PHÂN TÍCH POLYMARKET
+# ==========================================
+class MarketScanner:
+    """Xử lý phân tích bracket, kết nối API Polymarket và lọc market"""
+
+    @staticmethod
+    def parse_val(title: str) -> float:
+        if not title:
+            return 0.0
+        text = str(title).lower()
+        text = re.sub(r"(january|february|march|april|may|june|july|august|september|october|november|december|\b\d{4}\b)", "", text)
+
+        m_below = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*below|or\s*lower|or\s*less)", text)
+        if m_below:
+            return float(m_below.group(1)) - 0.5
+
+        m_above = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:°f|f|°c|c)?\s*(?:or\s*higher|or\s*above|or\s*more)", text)
+        if m_above:
+            return float(m_above.group(1)) + 0.5
+
+        m_range = re.search(r"([-+]?\d+(?:\.\d+)?)\s*(?:-|to)\s*([-+]?\d+(?:\.\d+)?)", text)
+        if m_range:
+            return (float(m_range.group(1)) + float(m_range.group(2))) / 2.0
+
+        nums = re.findall(r"[-+]?\d+(?:\.\d+)?", text)
+        return float(nums[-1]) if nums else 0.0
+
+    @staticmethod
+    def get_target_dates(selected_date_labels) -> list:
+        dates = []
+        now = datetime.now()
+        label_map = {
+            "Yesterday": -1,
+            "Today": 0, 
+            "Tomorrow": 1, 
+            "Day After Tomorrow": 2
+        }
+        if isinstance(selected_date_labels, str):
+            selected_date_labels = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"] if selected_date_labels == "All Days" else [selected_date_labels]
+        for label in selected_date_labels:
+            if label in label_map:
+                d = now + timedelta(days=label_map[label])
+                dates.append({
+                    "slug": f"{MONTH_NAMES[d.month-1]}-{d.day}-{d.year}",
+                    "display": d.strftime("%d/%m/%Y")
+                })
+        return dates
+
+    @staticmethod
+    def get_bracket_prob(m: dict, books: dict) -> float:
+        try:
+            tokens = json.loads(m.get("clobTokenIds", "[]"))
+            if len(tokens) >= 2:
+                yes_id, no_id = tokens[0], tokens[1]
+                yes_book = books.get(yes_id, {})
+                no_book = books.get(no_id, {})
+                
+                y_bids = yes_book.get("bids", [])
+                y_asks = yes_book.get("asks", [])
+                n_bids = no_book.get("bids", [])
+                n_asks = no_book.get("asks", [])
+
+                if not y_bids and not y_asks and not n_bids and not n_asks:
+                    return -1.0
+
+                if y_bids:
+                    valid_bids = [float(b["price"]) for b in y_bids if "price" in b]
+                    if valid_bids:
+                        return max(valid_bids) * 100.0
+
+                if n_asks:
+                    valid_n_asks = [float(a["price"]) for a in n_asks if "price" in a]
+                    if valid_n_asks:
+                        return (1.0 - min(valid_n_asks)) * 100.0
+
+                vol = float(m.get("volume", 0) or 0)
+                if y_asks and (vol > 0 or n_bids):
+                    valid_y_asks = [float(a["price"]) for a in y_asks if "price" in a]
+                    if valid_y_asks:
+                        return min(valid_y_asks) * 100.0
+        except Exception:
+            pass
+
+        vol = float(m.get("volume", 0) or 0)
+        if vol > 0:
+            try:
+                raw_op = m.get("outcomePrices")
+                if raw_op:
+                    prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
+                    if prices and len(prices) > 0:
+                        return float(prices[0]) * 100.0
+            except Exception:
+                pass
+
+        return -1.0
+
+    @classmethod
+    async def check_event(cls, session, semaphore, city, date_info, m_type, type_cfg, matches_list, filtered_cities, error_cities):
+        async with semaphore:
+            slug = f"{m_type}-temperature-in-{city['polymarketCity']}-on-{date_info['slug']}"
+            try:
+                async with session.get(f"{GAMMA_URL}/{slug}") as resp:
+                    if resp.status != 200: 
+                        error_cities.append(city["name"])
+                        return
+                    event = await resp.json()
+                markets = event.get("markets", [])
+                if not markets: 
+                    error_cities.append(city["name"])
+                    return
+                
+                book_reqs = []
+                market_map = {}
+                for m in markets:
+                    tokens = json.loads(m.get("clobTokenIds", "[]"))
+                    if len(tokens) < 2:
+                        continue
+                    yes_id, no_id = tokens[0], tokens[1]
+                    book_reqs.extend([{"token_id": yes_id}, {"token_id": no_id}])
+                    market_map[yes_id] = {"m": m, "side": "YES", "other": no_id, "event": event}
+                    market_map[no_id] = {"m": m, "side": "NO", "other": yes_id, "event": event}
+                
+                if not book_reqs: 
+                    error_cities.append(city["name"])
+                    return
+                
+                async with session.post(f"{CLOB_URL}/books", json=book_reqs) as books_resp:
+                    if books_resp.status != 200: 
+                        error_cities.append(city["name"])
+                        return
+                    books_data = await books_resp.json()
+                
+                books = {b["asset_id"]: b for b in books_data}
+                sorted_markets = sorted(markets, key=lambda m: cls.parse_val(m.get("groupItemTitle") or m.get("question")))
+
+                top_bracket_indices = []
+                if type_cfg.get("gap_filter_enabled", False):
+                    market_yes_candidates = []
+                    for i, m in enumerate(sorted_markets):
+                        prob = cls.get_bracket_prob(m, books)
+                        if prob >= 0:
+                            market_yes_candidates.append((i, prob))
+                    
+                    market_yes_candidates.sort(key=lambda x: x[1], reverse=True)
+                    top_k = int(type_cfg.get("gap_top_k", 2))
+                    top_bracket_indices = [item[0] for item in market_yes_candidates[:top_k]]
+                
+                event_has_match = False
+                for yes_id, info in market_map.items():
+                    if info["side"] != "YES":
+                        continue
+                    m = info["m"]
+                    no_id = info["other"]
+                    evt = info["event"]
+                    
+                    no_book = books.get(no_id, {})
+                    
+                    n_bids = no_book.get("bids", [])
+                    valid_no_bids = [float(b["price"]) for b in n_bids if "price" in b]
+                    best_no_bid = max(valid_no_bids) if valid_no_bids else None
+                    best_bid_depth = sum(float(b.get("size", 0)) for b in n_bids if float(b.get("price", 0)) == best_no_bid) if best_no_bid is not None else 0.0
+                    best_bid_cents = round(best_no_bid * 100, 2) if best_no_bid is not None else 0.0
+                    
+                    n_asks = no_book.get("asks", [])
+                    valid_no_asks = [float(a["price"]) for a in n_asks if "price" in a]
+                    best_no_ask = min(valid_no_asks) if valid_no_asks else None
+                    best_ask_depth = sum(float(a.get("size", 0)) for a in n_asks if float(a.get("price", 0)) == best_no_ask) if best_no_ask is not None else 0.0
+                    best_ask_cents = round(best_no_ask * 100, 2) if best_no_ask is not None else None
+                    
+                    if best_no_ask is not None and best_no_bid is not None:
+                        spread_val = round((best_no_ask - best_no_bid) * 100, 1)
+                        spread_str = f"Spread {spread_val:.1f}¢"
+                    else:
+                        spread_str = "Spread —"
+
+                    is_match = False
+                    matched_price = 100.0
+                    target_type = "LIMIT_BID"
+                    
+                    if type_cfg.get("filter_no", True):
+                        min_limit = type_cfg["min_p_no"]
+                        max_limit = type_cfg["max_p_no"]
+                        
+                        pass_gap = True
+                        current_idx = -1
+                        for idx, sm in enumerate(sorted_markets):
+                            if sm['id'] == m['id']:
+                                current_idx = idx
+                                break
+
+                        if type_cfg.get("gap_filter_enabled", True) and top_bracket_indices:
+                            if current_idx != -1:
+                                gap_distance = int(type_cfg.get("gap_value", 4))
+                                for ref_idx in top_bracket_indices:
+                                    if abs(current_idx - ref_idx) <= gap_distance:
+                                        pass_gap = False
+                                        break
+                        
+                        if pass_gap:
+                            has_valid_bid = (best_no_bid is not None) and (best_bid_cents >= min_limit)
+                            if has_valid_bid:
+                                if best_ask_cents is not None and (min_limit <= best_ask_cents <= max_limit):
+                                    is_match = True
+                                    matched_price = best_ask_cents - 0.0001
+                                    target_type = "MARKET_BUY"
+                                elif best_bid_cents is not None and (min_limit <= best_bid_cents < max_limit):
+                                    is_match = True
+                                    matched_price = best_bid_cents
+                                    target_type = "LIMIT_BID"
+
+                    if is_match:
+                        event_has_match = True
+                        matches_list.append({
+                            "City": city["name"], 
+                            "Date": date_info["display"], 
+                            "Type": "Highest" if m_type == "highest" else "Lowest",
+                            "Market": m.get("groupItemTitle") or m.get("question"), 
+                            "NO_Bid_Display": f"{best_bid_cents:.1f}¢" if best_no_bid is not None else "Trống",
+                            "NO_Bid_Depth": best_bid_depth,
+                            "NO_Ask_Display": f"{best_ask_cents:.1f}¢" if best_no_ask is not None else "Trống",
+                            "NO_Ask_Depth": best_ask_depth,
+                            "Spread_Display": spread_str,
+                            "MatchedPrice": matched_price,
+                            "TargetType": target_type,
+                            "Link": f"https://polymarket.com/event/{evt['slug']}/{m['slug']}",
+                            "EventTitle": f"{m_type.capitalize()} temperature in {city['name']} on {date_info['display']}?"
+                        })
+                
+                if not event_has_match:
+                    filtered_cities.append(city["name"])
+
+            except Exception:
+                error_cities.append(city["name"])
+
+    @classmethod
+    async def run_scan(cls, highest_cfg, lowest_cfg, selected_cities, excluded_cities, selected_dates):
+        cities_to_scan = [c for c in CITIES_DATA if c.get("status") == "active"]
+        if excluded_cities:
+            cities_to_scan = [c for c in cities_to_scan if c["name"] not in excluded_cities]
+        if selected_cities:
+            cities_to_scan = [c for c in cities_to_scan if c["name"] in selected_cities]
+            
+        dates = cls.get_target_dates(selected_dates)
+        matches_list = []
+        filtered_cities = []
+        error_cities = []
+        semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
+        
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for city in cities_to_scan:
+                m_types = city.get("marketType", ["highest", "lowest"])
+                if not isinstance(m_types, list): 
+                    m_types = [m_types]
+                for d in dates:
+                    if highest_cfg["enabled"] and "highest" in m_types:
+                        tasks.append(cls.check_event(session, semaphore, city, d, "highest", highest_cfg, matches_list, filtered_cities, error_cities))
+                    if lowest_cfg["enabled"] and "lowest" in m_types:
+                        tasks.append(cls.check_event(session, semaphore, city, d, "lowest", lowest_cfg, matches_list, filtered_cities, error_cities))
+            await asyncio.gather(*tasks)
+        return matches_list, list(set(filtered_cities)), list(set(error_cities))
+
+
+# --- STREAMLIT UI ---
+st.set_page_config(page_title="PolyWeather Limit Hunter", page_icon="🎯", layout="wide")
+
+st.markdown("<div id='top'></div>", unsafe_allow_html=True)
+
+# Khởi tạo state từ config.json lưu trên server qua ConfigManager
+if "config_loaded" not in st.session_state:
+    st.session_state.current_config = ConfigManager.load_saved_config()
+    st.session_state.selected_cities = st.session_state.current_config.get("selected_cities", DEFAULT_FAVORITE_CITIES)
+    st.session_state.excluded_cities = st.session_state.current_config.get("excluded_cities", DEFAULT_CONFIG.get("excluded_cities", []))
+    st.session_state.ordered_markets = st.session_state.current_config.get("ordered_markets", [])
+    st.session_state.checked_markets = st.session_state.current_config.get("checked_markets", [])
+    st.session_state.scan_results = None
+    st.session_state.config_loaded = True
+
+config = st.session_state.current_config
+
+st.markdown("""
+<style>
+    .main, .stApp { background-color: #120b0e; }
+    header { background-color: #1c1116 !important; border-bottom: 1px solid #4a2335; }
+    .filter-box { background-color: #1c1116; padding: 20px; border-radius: 12px; border: 1px solid #4a2335; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(236,72,153,0.1); }
+    .type-panel { background-color: #170d12; border: 1px solid #3d1b2b; border-radius: 10px; padding: 15px; margin-top: 5px; }
+    .result-card { background-color: #1c1116; border: 1px solid #4a2335; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(236,72,153,0.05); }
+    .city-header { color: #fbcfe8; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; text-shadow: 0 0 8px rgba(244,114,182,0.4); }
+    
+    .price-btn-bid { background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }
+    .price-btn-ask { background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }
+    .spread-box { background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; text-align: center; }
+    .depth-text { color: #9d8590; font-size: 0.7rem; margin-top: 2px; }
+    
+    a[href="#top"] {
+        position: fixed;
+        bottom: 70px;
+        right: 20px;
+        background-color: #ec4899;
+        color: white !important;
+        padding: 10px 18px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: bold;
+        z-index: 1000;
+        box-shadow: 0 4px 15px rgba(236,72,153,0.4);
+        transition: background 0.3s ease;
+    }
+    a[href="#top"]:hover {
+        background-color: #f43f5e;
+        text-decoration: none;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+with st.container():
+    st.markdown('<div class="filter-box">', unsafe_allow_html=True)
+    all_city_names = sorted([c["name"] for c in CITIES_DATA])
+    
+    st.session_state.selected_cities = [c for c in st.session_state.selected_cities if c not in st.session_state.excluded_cities]
+
+    exclude_options = [c for c in all_city_names if c not in st.session_state.selected_cities]
+    excluded_cities = st.multiselect("EXCLUDE CITIES (BLACKLIST)", exclude_options, default=[c for c in st.session_state.excluded_cities if c in exclude_options])
+    st.session_state.excluded_cities = excluded_cities
+    
+    preset_col1, preset_col2, preset_col3, preset_col4, preset_col5 = st.columns([1.2, 1.2, 0.9, 1.5, 1.2])
+    with preset_col1:
+        if st.button("Morning Cities", use_container_width=True): 
+            st.session_state.selected_cities = [c for c in DEFAULT_FAVORITE_CITIES if c not in st.session_state.excluded_cities]
+            st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            ConfigManager.save_config_to_file(st.session_state.current_config)
+            st.rerun()
+    with preset_col2:
+        if st.button("Evening Cities", use_container_width=True):
+            morning_set = set(DEFAULT_FAVORITE_CITIES)
+            st.session_state.selected_cities = [c["name"] for c in CITIES_DATA if c["name"] not in morning_set and c["name"] not in st.session_state.excluded_cities]
+            st.session_state.current_config["selected_cities"] = st.session_state.selected_cities
+            ConfigManager.save_config_to_file(st.session_state.current_config)
+            st.rerun()
+    with preset_col3:
+        if st.button("Clear All", use_container_width=True): 
+            st.session_state.selected_cities = []
+            st.session_state.current_config["selected_cities"] = []
+            ConfigManager.save_config_to_file(st.session_state.current_config)
+            st.rerun()
+    with preset_col4:
+        st.button("🧹 Reset Memory", use_container_width=True, on_click=ConfigManager.clear_all_flags, help="Xóa cờ đánh dấu Checked và Ordered cho chu kỳ mới.")
+    with preset_col5:
+        if st.button("🔄 Reset Defaults", use_container_width=True, help="Khôi phục toàn bộ cài đặt gốc ban đầu"):
+            st.session_state.current_config = DEFAULT_CONFIG.copy()
+            st.session_state.selected_cities = DEFAULT_CONFIG["selected_cities"].copy()
+            st.session_state.excluded_cities = DEFAULT_CONFIG["excluded_cities"].copy()
+            st.session_state.ordered_markets = []
+            st.session_state.checked_markets = []
+            for k in ["chk_scan_highest", "chk_h_no", "num_h_min_no", "num_h_max_no", "chk_h_gap", "num_h_top_k", "num_h_gap",
+                     "chk_scan_lowest", "chk_l_no", "num_l_min_no", "num_l_max_no", "chk_l_gap", "num_l_top_k", "num_l_gap"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            ConfigManager.save_config_to_file(DEFAULT_CONFIG)
+            st.toast("Đã khôi phục cài đặt mặc định!", icon="🔄")
+            st.rerun()
+    
+    city_names = [c for c in all_city_names if c not in st.session_state.excluded_cities]
+    selected_cities = st.multiselect("SELECT CITIES TO SCAN", city_names, default=[c for c in st.session_state.selected_cities if c in city_names])
+    st.session_state.selected_cities = selected_cities
+    
+    date_options = ["Yesterday", "Today", "Tomorrow", "Day After Tomorrow"]
+    saved_dates = config.get("selected_dates", ["Yesterday", "Today"])
+    valid_saved_dates = [d for d in saved_dates if d in date_options]
+    selected_dates = st.multiselect("SELECT DATES", date_options, default=valid_saved_dates)
+
+    st.markdown("<hr style='border: 1px solid #3d1b2b; margin: 15px 0;'>", unsafe_allow_html=True)
+
+    col_high, col_low = st.columns(2)
+    
+    # 1. BẢNG HIGHEST
+    with col_high:
+        st.markdown('<div class="type-panel">', unsafe_allow_html=True)
+        scan_highest = st.checkbox("🔥 SCAN HIGHEST MARKETS", value=config.get("scan_highest", True), key="chk_scan_highest")
+        
+        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>HIGHEST NO PRICE (MIN BID - MAX THRESHOLD)</p>", unsafe_allow_html=True)
+        h_no1, h_no2, h_no3 = st.columns([0.6, 1.2, 1.2])
+        with h_no1:
+            h_filter_no = st.checkbox("Limit", value=config.get("h_filter_no", True), label_visibility="collapsed", key="chk_h_no", disabled=not scan_highest)
+        with h_no2:
+            h_min_p_no = st.number_input("MIN BID", min_value=0.0, max_value=100.0, value=config.get("h_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_h_min_no", disabled=not scan_highest)
+        with h_no3:
+            h_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("h_max_p_no", 99.9), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_h_max_no", disabled=not scan_highest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Ask ≤ {h_max_p_no:.1f}¢: Mua luôn | Trống {h_max_p_no:.1f}¢: Kê Limit)</p>", unsafe_allow_html=True)
+
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>HIGHEST GAP FILTER</p>", unsafe_allow_html=True)
+        h_g1, h_g2, h_g3 = st.columns([0.6, 1.2, 1.2])
+        with h_g1:
+            h_gap_filter_enabled = st.checkbox("", value=config.get("h_gap_filter_enabled", True), key="chk_h_gap", disabled=not scan_highest)
+        with h_g2:
+            h_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("h_gap_top_k", 2)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_h_top_k", disabled=not scan_highest)
+        with h_g3:
+            h_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("h_gap_value", 4)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_h_gap", disabled=not scan_highest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{h_gap_value} ô từ Top {h_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 2. BẢNG LOWEST
+    with col_low:
+        st.markdown('<div class="type-panel">', unsafe_allow_html=True)
+        scan_lowest = st.checkbox("❄️ SCAN LOWEST MARKETS", value=config.get("scan_lowest", True), key="chk_scan_lowest")
+        
+        st.markdown("<p style='font-weight: 600; color: #f85149; font-size: 0.85rem; margin-top: 5px; margin-bottom: 2px;'>LOWEST NO PRICE (MIN BID - MAX THRESHOLD)</p>", unsafe_allow_html=True)
+        l_no1, l_no2, l_no3 = st.columns([0.6, 1.2, 1.2])
+        with l_no1:
+            l_filter_no = st.checkbox("Limit", value=config.get("l_filter_no", True), label_visibility="collapsed", key="chk_l_no", disabled=not scan_lowest)
+        with l_no2:
+            l_min_p_no = st.number_input("MIN BID", min_value=0.0, max_value=100.0, value=config.get("l_min_p_no", 90.0), step=0.1, format="%.1f", label_visibility="collapsed", key="num_l_min_no", disabled=not scan_lowest)
+        with l_no3:
+            l_max_p_no = st.number_input("MAX", min_value=0.0, max_value=100.0, value=config.get("l_max_p_no", 99.9), step=0.1, format="%.1f", help="Ask <= mức này khớp ngay | Trống mức này thì kê Limit", label_visibility="collapsed", key="num_l_max_no", disabled=not scan_lowest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Ask ≤ {l_max_p_no:.1f}¢: Mua luôn | Trống {l_max_p_no:.1f}¢: Kê Limit)</p>", unsafe_allow_html=True)
+            
+        st.markdown("<p style='font-weight: 600; color: #e3b341; font-size: 0.85rem; margin-top: 10px; margin-bottom: 2px;'>LOWEST GAP FILTER</p>", unsafe_allow_html=True)
+        l_g1, l_g2, l_g3 = st.columns([0.6, 1.2, 1.2])
+        with l_g1:
+            l_gap_filter_enabled = st.checkbox("", value=config.get("l_gap_filter_enabled", True), key="chk_l_gap", disabled=not scan_lowest)
+        with l_g2:
+            l_gap_top_k = st.number_input("Top K", min_value=1, max_value=5, value=int(config.get("l_gap_top_k", 1)), step=1, help="Số ô Sell YES cao nhất", label_visibility="collapsed", key="num_l_top_k", disabled=not scan_lowest)
+        with l_g3:
+            l_gap_value = st.number_input("Gap", min_value=1, max_value=10, value=int(config.get("l_gap_value", 3)), step=1, help="Khoảng cách ô né cả 2 phía", label_visibility="collapsed", key="num_l_gap", disabled=not scan_lowest)
+        st.markdown(f"<p style='color:#9d8590; font-size:0.7rem; margin-top:-8px'>(Né ±{l_gap_value} ô từ Top {l_gap_top_k} cao nhất)</p>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    col_msg, col_toggle, col_save, col_btn = st.columns([2.0, 1.2, 1.0, 1.1])
+    with col_msg: 
+        st.markdown("<p style='color:#9d8590; font-size:0.9rem; margin-top:10px'>🚀 <b>Hunter Mode:</b> Tự động gộp <b>⚡ Mua ngay (Market Buy)</b> & <b>🎯 Kê Limit (Place Limit)</b>. Ô xanh = NO Bid, Ô đỏ = NO Ask.</p>", unsafe_allow_html=True)
+    with col_toggle:
+        st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+        only_buy_now = st.toggle("⚡ Chỉ kèo vào luôn", value=False, help="Chỉ hiển thị các kèo khớp ngay (Market Buy)")
+    with col_save:
+        if st.button("💾 Lưu Cài Đặt", use_container_width=True, help="Lưu cấu hình hiện tại để tự động tải lại trong các session tiếp theo"):
+            current_config = {
+                "scan_highest": scan_highest,
+                "h_filter_no": h_filter_no,
+                "h_min_p_no": h_min_p_no,
+                "h_max_p_no": h_max_p_no,
+                "h_gap_filter_enabled": h_gap_filter_enabled,
+                "h_gap_top_k": h_gap_top_k,
+                "h_gap_value": h_gap_value,
+                
+                "scan_lowest": scan_lowest,
+                "l_filter_no": l_filter_no,
+                "l_min_p_no": l_min_p_no,
+                "l_max_p_no": l_max_p_no,
+                "l_gap_filter_enabled": l_gap_filter_enabled,
+                "l_gap_top_k": l_gap_top_k,
+                "l_gap_value": l_gap_value,
+
+                "selected_dates": selected_dates,
+                "selected_cities": selected_cities,
+                "excluded_cities": excluded_cities,
+                "ordered_markets": st.session_state.ordered_markets,
+                "checked_markets": st.session_state.checked_markets
+            }
+            st.session_state.current_config = current_config
+            ConfigManager.save_config_to_file(current_config)
+            st.toast("✅ Đã lưu thông số thành công cho các session sau!", icon="💾")
+    with col_btn: 
+        search_clicked = st.button("Search Markets", type="primary", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if search_clicked:
+    if not scan_highest and not scan_lowest:
+        st.warning("Please check at least one market type to scan (Highest or Lowest).")
+    else:
+        current_config = {
+            "scan_highest": scan_highest,
+            "h_filter_no": h_filter_no,
+            "h_min_p_no": h_min_p_no,
+            "h_max_p_no": h_max_p_no,
+            "h_gap_filter_enabled": h_gap_filter_enabled,
+            "h_gap_top_k": h_gap_top_k,
+            "h_gap_value": h_gap_value,
+            
+            "scan_lowest": scan_lowest,
+            "l_filter_no": l_filter_no,
+            "l_min_p_no": l_min_p_no,
+            "l_max_p_no": l_max_p_no,
+            "l_gap_filter_enabled": l_gap_filter_enabled,
+            "l_gap_top_k": l_gap_top_k,
+            "l_gap_value": l_gap_value,
+
+            "selected_dates": selected_dates,
+            "selected_cities": selected_cities,
+            "excluded_cities": excluded_cities,
+            "ordered_markets": st.session_state.ordered_markets,
+            "checked_markets": st.session_state.checked_markets
+        }
+        st.session_state.current_config = current_config
+        ConfigManager.save_config_to_file(current_config)
+
+        highest_cfg = {
+            "enabled": scan_highest,
+            "filter_no": h_filter_no,
+            "min_p_no": h_min_p_no,
+            "max_p_no": h_max_p_no,
+            "gap_filter_enabled": h_gap_filter_enabled,
+            "gap_top_k": h_gap_top_k,
+            "gap_value": h_gap_value
         }
 
-    return rows
+        lowest_cfg = {
+            "enabled": scan_lowest,
+            "filter_no": l_filter_no,
+            "min_p_no": l_min_p_no,
+            "max_p_no": l_max_p_no,
+            "gap_filter_enabled": l_gap_filter_enabled,
+            "gap_top_k": l_gap_top_k,
+            "gap_value": l_gap_value
+        }
 
+        with st.spinner("Hunting Opportunities..."):
+            res, filt, err = asyncio.run(MarketScanner.run_scan(
+                highest_cfg, lowest_cfg,
+                selected_cities, excluded_cities, selected_dates
+            ))
+            st.session_state.scan_results = {
+                "matches": res,
+                "filtered": filt,
+                "errors": err
+            }
 
-def fetch_clob_books(token_ids: list[str]) -> dict[str, dict]:
-    """Lấy sổ lệnh thực tế (Best Ask & thanh khoản) từ CLOB API theo lô token_id."""
-    unique_ids = [t for t in dict.fromkeys(token_ids) if t and str(t).strip()]
-    books_map: dict[str, dict] = {}
-    if not unique_ids:
-        return books_map
+if st.session_state.scan_results is not None:
+    scan_data = st.session_state.scan_results
+    results = scan_data["matches"]
+    filtered_raw = scan_data["filtered"]
+    errors_raw = scan_data["errors"]
+    
+    actual_scanned_list = [c["name"] for c in CITIES_DATA if c.get("status") == "active" and c["name"] not in excluded_cities]
+    if selected_cities:
+        actual_scanned_list = [c for c in actual_scanned_list if c in selected_cities]
+        
+    total_scanned_cities = len(actual_scanned_list)
 
-    for i in range(0, len(unique_ids), 100):
-        chunk = [{"token_id": tid} for tid in unique_ids[i : i + 100]]
-        for _ in range(3):
-            try:
-                res = requests.post(CLOB_BOOKS_URL, json=chunk, timeout=10)
-                if res.status_code == 429:
-                    time.sleep(1.5)
-                    continue
-                if res.status_code == 200:
-                    for b in res.json():
-                        asset_id = str(b.get("asset_id", ""))
-                        if asset_id:
-                            books_map[asset_id] = b
-                break
-            except Exception:
-                time.sleep(0.5)
+    df = pd.DataFrame(results) if results else pd.DataFrame()
 
-    return books_map
+    if only_buy_now and not df.empty:
+        df = df[df["TargetType"] == "MARKET_BUY"]
 
+    # --- SẮP XẾP ƯU TIÊN THỜI GIAN GẦN RESOLVE NHẤT ---
+    if not df.empty:
+        # Tính thời gian còn lại đến resolve (giây & display text)
+        df["SecondsUntilResolve"] = df.apply(lambda r: CityTimeManager.get_seconds_until_resolve(r["City"], r["Date"]), axis=1)
+        df["TimeLeftDisplay"] = df.apply(lambda r: CityTimeManager.get_hours_until_resolve(r["City"], r["Date"]), axis=1)
+        
+        # Priority: Market Buy (0) ưu tiên hơn Limit Bid (1)
+        df["Priority"] = df["TargetType"].apply(lambda x: 0 if x == "MARKET_BUY" else 1)
+        
+        # Sắp xếp các dòng: Gần resolve nhất -> Ưu tiên Buy -> Giá khớp
+        df = df.sort_values(by=["SecondsUntilResolve", "Priority", "MatchedPrice"], ascending=[True, True, True])
 
-def parse_ask_metrics(book: dict, max_limit_dec: float) -> tuple[float | None, float]:
-    """Trả về (best_ask_price, tổng_USDC_khả_dụng_tại_hoặc_dưới_giá_trần)."""
-    asks = book.get("asks") or []
-    valid_asks = []
-    for a in asks:
-        try:
-            p = float(a.get("price", 0))
-            s = float(a.get("size", 0))
-            if p > 0 and s > 0:
-                valid_asks.append((p, s))
-        except Exception:
-            continue
-
-    if not valid_asks:
-        return None, 0.0
-
-    best_ask = min(p for p, _ in valid_asks)
-    avail_usdc = sum(p * s for p, s in valid_asks if p <= max_limit_dec + 1e-6)
-    return best_ask, avail_usdc
-
-
-def format_time_ago(epoch_val) -> str:
-    if pd.isna(epoch_val) or not epoch_val:
-        return "N/A"
-    try:
-        dt = datetime.fromtimestamp(float(epoch_val), tz=timezone.utc)
-        diff_min = (datetime.now(timezone.utc) - dt).total_seconds() / 60.0
-        if diff_min < 0:
-            return "Vừa xong"
-        if diff_min < 60:
-            return f"{int(diff_min)} phút trước"
-        if diff_min < 1440:
-            return f"{diff_min / 60:.1f} giờ trước"
-        return f"{diff_min / 1440:.1f} ngày trước"
-    except Exception:
-        return "N/A"
-
-
-def evaluate_positions(
-    raw_open: list[dict],
-    books_map: dict[str, dict],
-    multiplier: float,
-    min_user_bet: float,
-    max_user_cap: float,
-    max_slippage_cents: float,
-    drop_warn_cents: float,
-    block_50_60: bool,
-    detect_hedge: bool,
-    max_fav_prob: float,
-    blocked_keywords: list[str],
-) -> pd.DataFrame:
-    if not raw_open:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(raw_open)
-
-    def get_col(candidates: list[str], default=None) -> pd.Series:
-        for c in candidates:
-            if c in df.columns:
-                return df[c]
-        return pd.Series([default] * len(df), index=df.index)
-
-    df["condition_id"] = get_col(["condition_id"], default="").astype(str)
-    df["token_id"] = get_col(["token_id", "asset", "asset_id"], default="").astype(str)
-    df["title"] = get_col(["title", "question"], default="N/A").astype(str)
-    df["outcome"] = get_col(["outcome"], default="").astype(str)
-    df["avg_price"] = pd.to_numeric(get_col(["avg_price"]), errors="coerce").fillna(0.0)
-    df["entry_cost_usdc"] = pd.to_numeric(get_col(["entry_cost_usdc"]), errors="coerce").fillna(0.0)
-    df["current_size"] = pd.to_numeric(get_col(["current_size"]), errors="coerce").fillna(0.0)
-    df["current_value"] = pd.to_numeric(get_col(["current_value"]), errors="coerce").fillna(0.0)
-
-    # Khóa định danh duy nhất cho từng vị thế để lưu trạng thái Đã vào lệnh
-    df["pos_key"] = np.where(
-        df["token_id"].str.strip() != "",
-        df["token_id"].str.strip(),
-        df["condition_id"].str.strip() + "_" + df["outcome"].str.strip(),
+    # Sắp xếp danh sách thành phố: Thành phố có market gần resolve nhất lên đầu
+    sorted_cities = (
+        df.groupby('City')
+        .agg({'SecondsUntilResolve': 'min', 'MatchedPrice': 'min'})
+        .sort_values(by=['SecondsUntilResolve', 'MatchedPrice'], ascending=[True, True])
+        .index if not df.empty else []
     )
+    matched_cities_count = len(sorted_cities)
 
-    # Chuẩn API v2: total_pnl = realized_pnl + unrealized_pnl
-    realized_s = pd.to_numeric(get_col(["realized_pnl"]), errors="coerce").fillna(0.0)
-    unrealized_s = pd.to_numeric(get_col(["unrealized_pnl"]), errors="coerce")
-    df["total_pnl"] = realized_s + unrealized_s.fillna(df["current_value"] - df["entry_cost_usdc"])
+    no_match_at_all = [c for c in actual_scanned_list if c not in sorted_cities]
+    error_list = [c for c in no_match_at_all if c in errors_raw]
+    filtered_list = [c for c in no_match_at_all if c not in error_list]
 
-    # Giá tham chiếu từ /v2/positions (dùng làm fallback khi sổ lệnh không có Ask)
-    raw_cur_p = pd.to_numeric(get_col(["current_price"]), errors="coerce")
-    implied_cur_p = np.where(df["current_size"] > 0, df["current_value"] / df["current_size"], df["avg_price"])
-    df["ref_price"] = raw_cur_p.where(raw_cur_p.notna() & (raw_cur_p > 0), implied_cur_p).fillna(df["avg_price"])
-
-    # Quy tắc 1 & 3: Nhân hệ số, không làm tròn lên, khóa trần max_user_cap
-    df["raw_user_bet"] = df["entry_cost_usdc"] * multiplier
-    df["final_user_bet"] = df["raw_user_bet"].clip(upper=max_user_cap).round(2)
-
-    # Quy tắc 4: Tính giá trần tối đa & đối chiếu Best Ask thực tế trên CLOB
-    max_slip_dec = max_slippage_cents / 100.0
-    df["max_limit_dec"] = (df["avg_price"] + max_slip_dec).clip(upper=0.99)
-    df["max_limit_cents"] = df["max_limit_dec"] * 100.0
-
-    exec_prices = []
-    avail_liqs = []
-    has_live_ask = []
-
-    for _, r in df.iterrows():
-        book = books_map.get(r["token_id"].strip(), {})
-        best_ask, avail_usdc = parse_ask_metrics(book, r["max_limit_dec"])
-        if best_ask is not None:
-            exec_prices.append(best_ask)
-            avail_liqs.append(avail_usdc)
-            has_live_ask.append(True)
-        else:
-            exec_prices.append(r["ref_price"])
-            avail_liqs.append(0.0)
-            has_live_ask.append(False)
-
-    df["exec_price"] = exec_prices
-    df["avail_liq_usdc"] = avail_liqs
-    df["has_live_ask"] = has_live_ask
-    df["slippage_cents"] = (df["exec_price"] - df["avg_price"]) * 100.0
-
-    # Phát hiện các thị trường ví gốc đang ôm từ 2 cửa trở lên (Hedge 2 đầu)
-    active_pos = df[(df["condition_id"].str.strip() != "") & (df["current_size"] > 0)]
-    outcome_counts = active_pos.groupby("condition_id")["outcome"].nunique()
-    hedged_cids = set(outcome_counts[outcome_counts >= 2].index)
-
-    last_ts = pd.to_numeric(get_col(["last_event_at", "updated_at", "timestamp"]), errors="coerce")
-    df["last_buy_ago"] = last_ts.apply(format_time_ago)
-
-    slug_col = get_col(["event_slug", "slug"], default="")
-    df["url"] = slug_col.apply(
-        lambda s: f"https://polymarket.com/event/{s}" if pd.notna(s) and str(s).strip() else ""
-    )
-
-    statuses = []
-    reasons = []
-    action_notes = []
-
-    for _, r in df.iterrows():
-        p = r["avg_price"]
-        ref_p = r["ref_price"]
-        raw_bet = r["raw_user_bet"]
-        user_bet = r["final_user_bet"]
-        slip_c = r["slippage_cents"]
-        liq = r["avail_liq_usdc"]
-        live_ask = r["has_live_ask"]
-        title_lower = r["title"].lower()
-
-        if ref_p <= 0.02 or ref_p >= 0.98:
-            statuses.append("REJECTED")
-            reasons.append(f"Kèo đã ngã ngũ/sát giờ đóng (Giá {ref_p*100:.1f}¢)")
-            action_notes.append("")
-            continue
-
-        # Kiểm tra Hedge 2 đầu trước khi vào tiền
-        if detect_hedge and r["condition_id"] in hedged_cids:
-            statuses.append("HEDGED")
-            reasons.append("Ví gốc đang giữ cả 2 cửa trên trận này")
-            action_notes.append("🛑 Bỏ qua (Ví đang Hedge)")
-            continue
-
-        # Quy tắc 2 (Giải đấu): Tách riêng giải đấu chặn sang Mục 4
-        matched_kw = next((kw for kw in blocked_keywords if kw in title_lower), None)
-        if matched_kw:
-            statuses.append("BLOCKED_LEAGUE")
-            sub_notes = ["Đạt vốn >=$4k" if raw_bet >= min_user_bet else "Dưới vốn <$4k"]
-            if (block_50_60 and 0.50 <= p < 0.60) or (p > max_fav_prob / 100.0):
-                sub_notes.append("Sai dải giá")
-            else:
-                sub_notes.append("Đúng dải giá")
-            reasons.append(f"[{matched_kw.upper()}] " + " • ".join(sub_notes))
-            action_notes.append("Không vào tiền")
-            continue
-
-        # Quy tắc 1: Ngưỡng kích hoạt tối thiểu
-        if raw_bet < min_user_bet:
-            min_whale_req = min_user_bet / multiplier if multiplier > 0 else 0
-            statuses.append("REJECTED")
-            reasons.append(f"Vốn ví gốc ${r['entry_cost_usdc']:,.0f} < ${min_whale_req:,.0f} (Lệnh bạn ${raw_bet:.2f})")
-            action_notes.append("")
-            continue
-
-        # Quy tắc 2 (Xác suất): Cấm 50–60% và >85%
-        if block_50_60 and (0.50 <= p < 0.60):
-            statuses.append("REJECTED")
-            reasons.append(f"Dải cấm 50%–60% (Giá ví gốc {p*100:.1f}¢)")
-            action_notes.append("")
-            continue
-
-        if p > (max_fav_prob / 100.0):
-            statuses.append("REJECTED")
-            reasons.append(f"Dải cấm >{max_fav_prob:.0f}% (Biên lãi mỏng: {p*100:.1f}¢)")
-            action_notes.append("")
-            continue
-
-        # Quy tắc 4: Kiểm soát trượt giá tăng quá trần (dựa trên Best Ask thực tế)
-        if slip_c > max_slippage_cents:
-            statuses.append("SLIPPAGE_WARN")
-            reasons.append(f"Ask thực tế vượt trần (+{slip_c:.1f}¢ > +{max_slippage_cents:.1f}¢)")
-            action_notes.append("Chỉ đặt Limit ở Giá trần")
-            continue
-
-        statuses.append("VALID")
-        reasons.append("Đạt đủ quy tắc")
-
-        notes = []
-        if slip_c < -abs(drop_warn_cents):
-            notes.append(f"⚠️ Tụt >{drop_warn_cents:.0f}¢ (CHECK LIVE!)")
-
-        if not live_ask:
-            notes.append("📋 Trống Ask (Kê Limit)")
-        elif liq < user_bet:
-            notes.append(f"💧 Ask mỏng (${liq:.2f}/${user_bet:.2f})")
-        elif not notes:
-            notes.append("✅ Khớp ngay (Check Pre-match)")
-
-        action_notes.append(" | ".join(notes))
-
-    df["signal_group"] = statuses
-    df["reason"] = reasons
-    df["action_note"] = action_notes
-    return df
-
-
-# Khởi tạo bộ nhớ các kèo đã đánh dấu vào lệnh trong phiên
-if "entered_ids" not in st.session_state:
-    st.session_state["entered_ids"] = set()
-
-# ======================== SIDEBAR CẤU HÌNH ========================
-with st.sidebar:
-    st.header("⚙️ Tham số 5 Quy Tắc")
-    wallet_input = st.text_input(
-        "Địa chỉ ví mục tiêu",
-        value=DEFAULT_WALLET,
-        help="Ví chuyên CS2, gom lệnh pre-match trước 11–13h.",
-    )
-
-    multiplier = st.number_input(
-        "Hệ số nhân quy mô (QT 5)",
-        min_value=0.00001,
-        max_value=1.0,
-        value=0.00025,
-        step=0.00005,
-        format="%.5f",
-        help="Giữ cố định 0.00025 suốt tháng đầu tiên trên vốn $100–$120.",
-    )
-
-    col_s1, col_s2 = st.columns(2)
-    min_user_bet = col_s1.number_input(
-        "Lệnh tối thiểu ($) (QT 1)",
-        min_value=0.1,
-        value=1.00,
-        step=0.5,
-        help="Tương đương vốn ví gốc >= $4,000. Không làm tròn lên.",
-    )
-    max_user_cap = col_s2.number_input(
-        "Trần tối đa ($) (QT 3)",
-        min_value=1.0,
-        value=10.00,
-        step=1.0,
-        help="Khóa rủi ro tối đa $10/kèo (tương đương $40,000 ví gốc).",
-    )
-
-    max_slippage_cents = st.slider(
-        "Trượt giá Ask tối đa (cent) (QT 4)",
-        min_value=0.5,
-        max_value=10.0,
-        value=2.5,
-        step=0.5,
-        help="So sánh Best Ask thực tế trên CLOB với giá trung bình ví gốc.",
-    )
-
-    drop_warn_cents = st.slider(
-        "Cảnh báo giá tụt sâu trên (cent) (QT 4)",
-        min_value=2.0,
-        max_value=15.0,
-        value=5.0,
-        step=1.0,
-        help="Tự gắn cờ cảnh báo kiểm tra trận đã đánh Live chưa nếu giá tụt sâu.",
-    )
-
-    block_50_60 = st.checkbox("Chặn dải lỗ 50% – 60% (QT 2)", value=True)
-    detect_hedge = st.checkbox("Chặn kèo ví gốc Hedge 2 đầu", value=True)
-    max_fav_prob = st.slider("Chặn kèo chắc ăn trên (%) (QT 2)", min_value=70, max_value=99, value=85, step=5)
-
-    blocked_kw_input = st.text_input(
-        "Từ khóa giải chặn — Bảng riêng (QT 2)",
-        value="CCT Europe",
-        help="Tách riêng các trận thuộc giải này sang Mục 4 để theo dõi, không vào tiền.",
-    )
-    blocked_keywords = [k.strip().lower() for k in blocked_kw_input.split(",") if k.strip()]
-
-    st.divider()
-    st.caption(
-        f"**Ngưỡng ví gốc:** Từ **${min_user_bet / multiplier:,.0f}** "
-        f"đến **${max_user_cap / multiplier:,.0f}** (đạt trần ${max_user_cap:.0f})."
-    )
-    if st.session_state["entered_ids"]:
-        if st.button(f"🧹 Xóa dấu Đã vào ({len(st.session_state['entered_ids'])})", use_container_width=True):
-            st.session_state["entered_ids"] = set()
-            st.rerun()
-
-# ======================== MAIN UI ========================
-st.title("⚡ Trạm Quét Lệnh Copy-Trade CS2")
-
-with st.expander("📋 Bảng Tóm Tắt 5 Quy Tắc & Cảnh Báo Thủ Công (Bấm để xem/thu gọn)", expanded=False):
-    rule_col1, rule_col2 = st.columns(2)
-    with rule_col1:
+    col_title, col_badges = st.columns([1.6, 2.6])
+    with col_title:
+        badge_color = "#ec4899" if matched_cities_count > 0 else "#f85149"
+        
+        buy_now_cnt = len(df[df['TargetType'] == 'MARKET_BUY']) if not df.empty else 0
+        limit_cnt = len(df[df['TargetType'] == 'LIMIT_BID']) if not df.empty else 0
+        
         st.markdown(
-            "**🤖 Tool đã tự động lọc 100%:**\n"
-            "* **QT 1 (Ngưỡng vào):** Chỉ lấy kèo ví gốc `>= $4,000` (bạn vào `>= $1.00`, không làm tròn lên).\n"
-            "* **QT 2 (Dải giá & Giải):** Chỉ lấy `< 50%` hoặc `60% – 85%`; chặn `50%–60%`, `> 85%`, kèo Hedge 2 đầu và tách riêng **`CCT Europe`**.\n"
-            "* **QT 3 (Trần rủi ro):** Khóa tối đa **`$10.00/kèo`** (`min(Vốn ví × 0.00025, $10)`).\n"
-            "* **QT 4 (Trượt giá CLOB):** Đối soát trực tiếp **Best Ask** & **Thanh khoản** trên sổ lệnh; chặn Ask cao hơn ví gốc quá **`+2.5¢`**."
+            f"### Hunt Results <span style='background:{badge_color}; padding:2px 10px; border-radius:10px; font-size:0.8rem'>{matched_cities_count}/{total_scanned_cities} Cities</span> "
+            f"<span style='background:#0d4429; color:#3fb950; padding:2px 8px; border-radius:8px; font-size:0.75rem'>⚡ {buy_now_cnt} Buy</span> "
+            f"<span style='background:#3a2d0c; color:#e3b341; padding:2px 8px; border-radius:8px; font-size:0.75rem'>🎯 {limit_cnt} Limit</span>", 
+            unsafe_allow_html=True
         )
-    with rule_col2:
-        st.warning(
-            "**⚠️ 3 việc BẮT BUỘC tự kiểm tra (Tool không tự chặn được):**\n"
-            "1. **Không vào kèo Live (QT 4):** Mở link Polymarket kiểm tra trận chưa bắt đầu thi đấu (đặc biệt khi thấy cờ `⚠️ Tụt >5¢`).\n"
-            "2. **Giữ tới đáo hạn (QT 4):** Khớp xong giữ nguyên tới hết trận để bấm **Redeem**, không bán non giữa trận.\n"
-            "3. **Kỷ luật vốn $100–$120 (QT 5):** Giữ nguyên hệ số `0.00025` suốt tháng đầu; khi tổng ví vượt **`$150`**, rút lãi dôi ra đưa vốn về **`$100–$120`**."
-        )
+        
+        if st.session_state.ordered_markets:
+            ordered_summary = []
+            for item in st.session_state.ordered_markets:
+                match = re.search(r"(Highest|Lowest) temperature in ([a-zA-Z\s]+) on", item)
+                if match:
+                    ordered_summary.append(f"{match.group(2)} ({match.group(1)[:4].upper()})")
+                else:
+                    ordered_summary.append(item[:15] + "...")
+            summary_str = ", ".join(ordered_summary)
+            st.markdown(f"<p style='color:#3fb950; font-size:0.85rem; margin-top:6px; margin-bottom:0px;'><b>🟢 Ordered:</b> {summary_str}</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='color:#9d8590; font-size:0.85rem; margin-top:6px; margin-bottom:0px;'><b>🟢 Ordered:</b> None</p>", unsafe_allow_html=True)
+        
+    with col_badges:
+        badges_html = ""
+        if filtered_list:
+            badges_html += f"<span style='color: #e3b341; font-size: 0.85rem; font-weight: bold; margin-right: 5px;'>🟡 FILTERED OUT:</span>"
+            for city in sorted(filtered_list):
+                badges_html += f"<span style='background-color: #3a2d0c; color: #e3b341; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 6px; border: 1px solid #e3b341; display: inline-block; margin-bottom: 4px;'>{city}</span>"
+        
+        if error_list:
+            if filtered_list:
+                badges_html += "<span style='margin-right: 15px;'></span>"
+            badges_html += f"<span style='color: #f85149; font-size: 0.85rem; font-weight: bold; margin-right: 5px;'>🔴 NO MARKET / API ERROR:</span>"
+            for city in sorted(error_list):
+                badges_html += f"<span style='background-color: #490e15; color: #f85149; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 6px; border: 1px solid #f85149; display: inline-block; margin-bottom: 4px;'>{city}</span>"
+        
+        if not filtered_list and not error_list:
+            badges_html = "<span style='color: #ec4899; font-size: 0.85rem; font-style: italic; font-weight: bold;'>✅ All selected cities matched perfectly!</span>"
+            
+        st.markdown(f"<div style='margin-top: 10px;'>{badges_html}</div>", unsafe_allow_html=True)
 
-top_col1, top_col2 = st.columns([1.2, 3])
-with top_col1:
-    scan_clicked = st.button("🔍 QUÉT LỆNH HỢP LỆ NGAY", type="primary", use_container_width=True)
+    if not df.empty:
+        for city_name in sorted_cities:
+            # Sắp xếp các sự kiện trong thành phố theo thời gian resolve gần nhất
+            city_results = df[df['City'] == city_name].sort_values(
+                by=["SecondsUntilResolve", "Priority", "MatchedPrice"], 
+                ascending=[True, True, True]
+            )
+            with st.container():
+                st.markdown(f"""<div class="result-card"><div class="city-header"><span>{city_name}</span></div>""", unsafe_allow_html=True)
+                
+                # Duyệt theo thứ tự các event_title đã được sắp xếp
+                for event_title in city_results['EventTitle'].unique():
+                    event_markets = city_results[city_results['EventTitle'] == event_title]
+                    
+                    # Lấy chuỗi đếm ngược thời gian
+                    time_left_str = event_markets.iloc[0]['TimeLeftDisplay']
+                    
+                    if time_left_str:
+                        if "hết hạn" in time_left_str:
+                            time_tag = f" &nbsp; <span style='background-color:#490e15; color:#f85149; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; font-weight:bold; border:1px solid #f85149;'>⏳ {time_left_str}</span>"
+                        else:
+                            time_tag = f" &nbsp; <span style='background-color:#26161f; color:#f472b6; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; font-weight:bold; border:1px solid #4a2335;'>⏳ {time_left_str}</span>"
+                    else:
+                        time_tag = ""
 
-if "scan_data" not in st.session_state or scan_clicked:
-    with st.spinner("Đang quét vị thế API v2 & đối soát sổ lệnh CLOB thực tế..."):
-        try:
-            open_rows = fetch_positions_v2(wallet_input, "OPEN")
-            redeem_rows = fetch_positions_v2(wallet_input, "REDEEMABLE")
-            token_list = [
-                str(r.get("token_id") or r.get("asset") or r.get("asset_id") or "")
-                for r in open_rows
-            ]
-            books_map = fetch_clob_books(token_list)
-            now_vn_str = datetime.now(VN_TZ).strftime("%H:%M:%S %d/%m/%Y (GMT+7)")
-            st.session_state["scan_data"] = (open_rows, redeem_rows, books_map, now_vn_str)
-        except Exception as e:
-            st.error(f"Lỗi gọi API Polymarket: {e}")
-            st.stop()
+                    is_ordered = event_title in st.session_state.ordered_markets
+                    is_checked = event_title in st.session_state.checked_markets
+                    
+                    if is_ordered:
+                        title_color = "#3fb950"
+                        badge = " &nbsp; <span style='background-color:#14472c; color:#3fb950; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟢 ORDERED</span>"
+                        row_bg = "background-color: #0d2a1a; border: 1px solid #3fb950; border-radius: 8px; opacity: 1.0;"
+                    elif is_checked:
+                        title_color = "#e3b341"
+                        badge = " &nbsp; <span style='background-color:#3a2d0c; color:#e3b341; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight:bold;'>🟡 CHECKED (MONITORING)</span>"
+                        row_bg = "background-color: #211b0a; border: 1px solid #e3b341; border-radius: 8px; opacity: 1.0;"
+                    else:
+                        title_color = "#e6edf3"
+                        badge = ""
+                        row_bg = "border-bottom: 1px solid #4a2335; opacity: 1.0;"
+                    
+                    title_col, check_btn_col, order_btn_col = st.columns([4, 1, 1])
+                    with title_col:
+                        st.markdown(f"<div style='color:{title_color}; font-size:0.95rem; margin-bottom:10px; margin-top: 5px; font-weight: bold;'>{event_title}{time_tag}{badge}</div>", unsafe_allow_html=True)
+                    
+                    with check_btn_col:
+                        chk_text = "Uncheck" if is_checked else "Checked ✔"
+                        st.button(chk_text, key=f"chk_{event_title}", on_click=ConfigManager.toggle_checked_status, args=(event_title,), use_container_width=True)
+                        
+                    with order_btn_col:
+                        btn_text = "Cancel Order" if is_ordered else "Order 🚀"
+                        st.button(btn_text, key=f"btn_{event_title}", on_click=ConfigManager.toggle_ordered_status, args=(event_title,), use_container_width=True)
+                    
+                    for _, row in event_markets.iterrows():
+                        safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{row['Market']}_{row['City']}_{row['TargetType']}")
+                        
+                        target_tag = (
+                            "<span style='background-color:#0d4429; color:#3fb950; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #3fb950;'>⚡ BUY NOW (ASK)</span>"
+                            if row.get('TargetType') == 'MARKET_BUY'
+                            else "<span style='background-color:#3a2d0c; color:#e3b341; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; margin-left:8px; border:1px solid #e3b341;'>🎯 PLACE LIMIT</span>"
+                        )
+                        
+                        row_html = f"""
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                        <style>
+                            body {{
+                                background-color: transparent;
+                                margin: 0;
+                                padding: 0;
+                                color: #e6edf3;
+                                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                                overflow: hidden;
+                            }}
+                            .market-row {{
+                                display: flex;
+                                align-items: center;
+                                justify-content: space-between;
+                                padding: 10px;
+                                font-size: 0.9rem;
+                                box-sizing: border-box;
+                                height: 68px;
+                            }}
+                            .price-btn-bid {{ background-color: #0d4429; color: #3fb950; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
+                            .price-btn-ask {{ background-color: #490e15; color: #f85149; padding: 4px 12px; border-radius: 4px; font-weight: bold; min-width: 95px; text-align: center; }}
+                            .spread-box {{ background-color: #26161f; color: #f472b6; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; border: 1px solid #4a2335; text-align: center; min-width: 85px; }}
+                            .depth-text {{ color: #9d8590; font-size: 0.7rem; margin-top: 2px; text-align: center; }}
+                            .copy-link {{ background-color: #ec4899; color: white !important; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; font-weight: bold; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s ease; }}
+                            .copy-link:hover {{ background-color: #f43f5e; }}
+                        </style>
+                        </head>
+                        <body>
+                        <div class="market-row" style="{row_bg}">
+                            <div style="flex:2; color:#e6edf3; font-weight: 500; padding-right:10px;">
+                                {row['Market']} {target_tag}
+                            </div>
+                            <div style="flex:2; display:flex; gap:15px; justify-content:center; align-items:center">
+                                <div style="text-align:center">
+                                    <div class="price-btn-bid">No Bid {row['NO_Bid_Display']}</div>
+                                    <div class="depth-text">${row['NO_Bid_Depth']:,.0f}</div>
+                                </div>
+                                <div class="spread-box">{row['Spread_Display']}</div>
+                                <div style="text-align:center">
+                                    <div class="price-btn-ask">No Ask {row['NO_Ask_Display']}</div>
+                                    <div class="depth-text">${row['NO_Ask_Depth']:,.0f}</div>
+                                </div>
+                            </div>
+                            <div style="flex:1; text-align:right">
+                                <textarea id="txt_{safe_id}" style="position:absolute; left:-9999px;">{row['Link']}</textarea>
+                                <button id="btn_{safe_id}" onclick="copyToClipboard()" class="copy-link">Copy Link</button>
+                            </div>
+                        </div>
+                        <script>
+                        function copyToClipboard() {{
+                            var copyText = document.getElementById("txt_{safe_id}");
+                            copyText.select();
+                            copyText.setSelectionRange(0, 99999);
+                            try {{
+                                var successful = document.execCommand('copy');
+                                if (successful) {{
+                                    var btn = document.getElementById("btn_{safe_id}");
+                                    btn.innerText = "Copied!";
+                                    btn.style.backgroundColor = "#ffb7c5";
+                                    btn.style.color = "#4a1525";
+                                    setTimeout(function() {{
+                                        btn.innerText = "Copy Link";
+                                        btn.style.backgroundColor = "#ec4899";
+                                        btn.style.color = "white";
+                                    }}, 2000);
+                                }}
+                            }} catch (err) {{}}
+                        }}
+                        </script>
+                        </body>
+                        </html>
+                        """
+                        st.components.v1.html(row_html, height=68)
+                    
+                st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.warning("No markets match your criteria.")
 
-open_rows, redeem_rows, books_map, last_scan_str = st.session_state["scan_data"]
-top_col2.caption(
-    f"Cập nhật lần cuối: **{last_scan_str}** | "
-    f"Vị thế đang mở: **{len(open_rows)}** | "
-    f"Sổ lệnh CLOB đã đối soát: **{len(books_map)}** token"
-)
-
-evaluated_df = evaluate_positions(
-    open_rows,
-    books_map=books_map,
-    multiplier=multiplier,
-    min_user_bet=min_user_bet,
-    max_user_cap=max_user_cap,
-    max_slippage_cents=max_slippage_cents,
-    drop_warn_cents=float(drop_warn_cents),
-    block_50_60=block_50_60,
-    detect_hedge=detect_hedge,
-    max_fav_prob=float(max_fav_prob),
-    blocked_keywords=blocked_keywords,
-)
-
-if evaluated_df.empty:
-    st.info("Hiện tại ví mục tiêu không có vị thế nào đang mở (`OPEN`).")
-    st.stop()
-
-valid_df = evaluated_df[evaluated_df["signal_group"] == "VALID"].sort_values("final_user_bet", ascending=False).copy()
-slip_df = evaluated_df[evaluated_df["signal_group"] == "SLIPPAGE_WARN"].sort_values("final_user_bet", ascending=False).copy()
-hedged_df = evaluated_df[evaluated_df["signal_group"] == "HEDGED"].sort_values(["condition_id", "entry_cost_usdc"], ascending=[True, False]).copy()
-blocked_df = evaluated_df[evaluated_df["signal_group"] == "BLOCKED_LEAGUE"].sort_values("entry_cost_usdc", ascending=False).copy()
-rej_df = evaluated_df[evaluated_df["signal_group"] == "REJECTED"].sort_values("entry_cost_usdc", ascending=False).copy()
-
-# Tính tổng vốn còn lại cần vào (loại trừ các kèo đã tick Đã vào)
-pending_valid_df = valid_df[~valid_df["pos_key"].isin(st.session_state["entered_ids"])]
-
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric(
-    "🟢 Kèo hợp lệ cần vào",
-    f"{len(pending_valid_df)}/{len(valid_df)} kèo",
-    f"Vốn cần thêm: ${pending_valid_df['final_user_bet'].sum():.2f}",
-)
-m2.metric("🟡 Quá trượt giá Ask", f"{len(slip_df)} kèo", "Chờ giá hồi về trần")
-m3.metric("⚠️ Ví Hedge 2 đầu", f"{len(hedged_df)} vị thế", "Chặn tránh lệch kèo")
-m4.metric("🚫 Giải chặn riêng", f"{len(blocked_df)} kèo", blocked_kw_input or "Trống")
-m5.metric("💰 Chờ Redeem", f"{len(redeem_rows)} kèo", "Nhắc bấm Claim")
-
-st.divider()
-
-# --- MỤC 1: KÈO HỢP LỆ ---
-st.subheader(f"🟢 1. Danh sách Kèo Hợp Lệ — Vào Lệnh Ngay ({len(valid_df)})")
-if valid_df.empty:
-    st.info("Chưa có kèo nào đạt đủ điều kiện ở thời điểm hiện tại. Hãy quay lại quét trước giờ các trận CS2 diễn ra.")
+    st.markdown('[↑ Back to Top](#top)')
 else:
-    st.caption("Tick vào cột **Đã vào** sau khi khớp lệnh trên Polymarket để tránh vào trùng ở các lần quét sau.")
-    valid_df["entered"] = valid_df["pos_key"].isin(st.session_state["entered_ids"])
-    disp_valid = valid_df[
-        [
-            "entered",
-            "title",
-            "outcome",
-            "final_user_bet",
-            "action_note",
-            "avg_price",
-            "exec_price",
-            "slippage_cents",
-            "max_limit_cents",
-            "avail_liq_usdc",
-            "entry_cost_usdc",
-            "last_buy_ago",
-            "url",
-        ]
-    ].copy()
-    disp_valid["avg_price"] = disp_valid["avg_price"] * 100.0
-    disp_valid["exec_price"] = disp_valid["exec_price"] * 100.0
-
-    edited_valid = st.data_editor(
-        disp_valid,
-        use_container_width=True,
-        hide_index=True,
-        key="editor_valid_signals",
-        disabled=[c for c in disp_valid.columns if c != "entered"],
-        column_config={
-            "entered": st.column_config.CheckboxColumn("✅ Đã vào", default=False),
-            "title": st.column_config.TextColumn("Trận đấu (Market)", width="large"),
-            "outcome": st.column_config.TextColumn("Cửa chọn"),
-            "final_user_bet": st.column_config.NumberColumn("💵 Tiền bạn vào ($)", format="$%.2f"),
-            "action_note": st.column_config.TextColumn("Cảnh báo thao tác", width="medium"),
-            "avg_price": st.column_config.NumberColumn("Giá ví gốc", format="%.1f¢"),
-            "exec_price": st.column_config.NumberColumn("Giá Ask thực", format="%.1f¢"),
-            "slippage_cents": st.column_config.NumberColumn("Trượt thực", format="%+.1f¢"),
-            "max_limit_cents": st.column_config.NumberColumn("🛑 Giá trần", format="%.1f¢"),
-            "avail_liq_usdc": st.column_config.NumberColumn("Thanh khoản Ask", format="$%.2f"),
-            "entry_cost_usdc": st.column_config.NumberColumn("Vốn ví gốc ($)", format="$%,.0f"),
-            "last_buy_ago": st.column_config.TextColumn("Lệnh cuối"),
-            "url": st.column_config.LinkColumn("Đặt lệnh", display_text="Mở Polymarket"),
-        },
-    )
-
-    # Đồng bộ trạng thái checkbox Đã vào (an toàn kể cả khi người dùng sort bảng)
-    checked_valid_keys = set(valid_df.loc[edited_valid.index[edited_valid["entered"]], "pos_key"])
-    unchecked_valid_keys = set(valid_df.loc[edited_valid.index[~edited_valid["entered"]], "pos_key"])
-    new_entered = (st.session_state["entered_ids"] | checked_valid_keys) - unchecked_valid_keys
-    if new_entered != st.session_state["entered_ids"]:
-        st.session_state["entered_ids"] = new_entered
-        st.rerun()
-
-# --- MỤC 2: KÈO QUÁ TRƯỢT GIÁ ASK ---
-if not slip_df.empty:
-    st.subheader(f"🟡 2. Kèo Đạt Điều Kiện Nhưng Quá Trượt Giá Ask ({len(slip_df)})")
-    st.caption("Giá Ask trên sổ lệnh đang cao hơn trần cho phép; chỉ đặt lệnh Limit ở cột **Giá trần** nếu trận chưa đá Live.")
-    slip_df["entered"] = slip_df["pos_key"].isin(st.session_state["entered_ids"])
-    disp_slip = slip_df[
-        [
-            "entered",
-            "title",
-            "outcome",
-            "final_user_bet",
-            "avg_price",
-            "exec_price",
-            "slippage_cents",
-            "max_limit_cents",
-            "entry_cost_usdc",
-            "last_buy_ago",
-            "url",
-        ]
-    ].copy()
-    disp_slip["avg_price"] = disp_slip["avg_price"] * 100.0
-    disp_slip["exec_price"] = disp_slip["exec_price"] * 100.0
-
-    edited_slip = st.data_editor(
-        disp_slip,
-        use_container_width=True,
-        hide_index=True,
-        key="editor_slip_signals",
-        disabled=[c for c in disp_slip.columns if c != "entered"],
-        column_config={
-            "entered": st.column_config.CheckboxColumn("✅ Đã kê Limit", default=False),
-            "title": st.column_config.TextColumn("Trận đấu (Market)", width="large"),
-            "outcome": st.column_config.TextColumn("Cửa chọn"),
-            "final_user_bet": st.column_config.NumberColumn("💵 Tiền bạn vào ($)", format="$%.2f"),
-            "avg_price": st.column_config.NumberColumn("Giá ví gốc", format="%.1f¢"),
-            "exec_price": st.column_config.NumberColumn("Giá Ask thực", format="%.1f¢"),
-            "slippage_cents": st.column_config.NumberColumn("Trượt thực", format="%+.1f¢"),
-            "max_limit_cents": st.column_config.NumberColumn("🛑 Giá trần", format="%.1f¢"),
-            "entry_cost_usdc": st.column_config.NumberColumn("Vốn ví gốc ($)", format="$%,.0f"),
-            "last_buy_ago": st.column_config.TextColumn("Lệnh cuối"),
-            "url": st.column_config.LinkColumn("Xem kèo", display_text="Mở Polymarket"),
-        },
-    )
-
-    checked_slip_keys = set(slip_df.loc[edited_slip.index[edited_slip["entered"]], "pos_key"])
-    unchecked_slip_keys = set(slip_df.loc[edited_slip.index[~edited_slip["entered"]], "pos_key"])
-    new_entered_slip = (st.session_state["entered_ids"] | checked_slip_keys) - unchecked_slip_keys
-    if new_entered_slip != st.session_state["entered_ids"]:
-        st.session_state["entered_ids"] = new_entered_slip
-        st.rerun()
-
-# --- MỤC 3: CẢNH BÁO KÈO VÍ GỐC ĐANG HEDGE 2 ĐẦU ---
-if not hedged_df.empty:
-    st.subheader(f"⚠️ 3. Cảnh Báo: Ví Gốc Đang Hedge 2 Đầu ({len(hedged_df)} vị thế)")
-    st.caption("Ví mục tiêu đang mua cả 2 cửa trên cùng thị trường — hệ thống tự động khóa không copy để tránh lệch kèo.")
-    disp_hedged = hedged_df[
-        ["title", "outcome", "entry_cost_usdc", "final_user_bet", "avg_price", "exec_price", "total_pnl", "last_buy_ago", "url"]
-    ].copy()
-    disp_hedged["avg_price"] = disp_hedged["avg_price"] * 100.0
-    disp_hedged["exec_price"] = disp_hedged["exec_price"] * 100.0
-
-    st.dataframe(
-        disp_hedged,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "title": st.column_config.TextColumn("Trận đấu (Đang Hedge)", width="large"),
-            "outcome": st.column_config.TextColumn("Cửa giữ"),
-            "entry_cost_usdc": st.column_config.NumberColumn("Vốn ví gốc ($)", format="$%,.0f"),
-            "final_user_bet": st.column_config.NumberColumn("Quy đổi ($)", format="$%.2f"),
-            "avg_price": st.column_config.NumberColumn("Giá ví gốc", format="%.1f¢"),
-            "exec_price": st.column_config.NumberColumn("Giá hiện tại", format="%.1f¢"),
-            "total_pnl": st.column_config.NumberColumn("PnL tạm tính ví ($)", format="$%+,.2f"),
-            "last_buy_ago": st.column_config.TextColumn("Lệnh cuối"),
-            "url": st.column_config.LinkColumn("Xem kèo", display_text="Mở Polymarket"),
-        },
-    )
-
-# --- MỤC 4: BẢNG THEO DÕI RIÊNG GIẢI ĐẤU CHẶN (CCT EUROPE) ---
-st.subheader(f"🚫 4. Bảng Theo Dõi Riêng: Giải Đấu Chặn ({len(blocked_df)})")
-if blocked_df.empty:
-    st.caption("Hiện tại ví gốc không có vị thế đang mở nào thuộc danh sách giải chặn.")
-else:
-    st.caption("Bảng này chỉ để theo dõi phong độ của ví ở giải chặn (hệ thống tự động chặn không vào tiền).")
-    disp_blocked = blocked_df[
-        ["title", "outcome", "reason", "entry_cost_usdc", "final_user_bet", "avg_price", "exec_price", "total_pnl", "last_buy_ago", "url"]
-    ].copy()
-    disp_blocked["avg_price"] = disp_blocked["avg_price"] * 100.0
-    disp_blocked["exec_price"] = disp_blocked["exec_price"] * 100.0
-
-    st.dataframe(
-        disp_blocked,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "title": st.column_config.TextColumn("Trận đấu (Giải chặn)", width="large"),
-            "outcome": st.column_config.TextColumn("Cửa chọn"),
-            "reason": st.column_config.TextColumn("Trạng thái điều kiện", width="medium"),
-            "entry_cost_usdc": st.column_config.NumberColumn("Vốn ví gốc ($)", format="$%,.0f"),
-            "final_user_bet": st.column_config.NumberColumn("Quy đổi ($)", format="$%.2f"),
-            "avg_price": st.column_config.NumberColumn("Giá ví gốc", format="%.1f¢"),
-            "exec_price": st.column_config.NumberColumn("Giá hiện tại", format="%.1f¢"),
-            "total_pnl": st.column_config.NumberColumn("PnL tạm tính ví ($)", format="$%+,.2f"),
-            "last_buy_ago": st.column_config.TextColumn("Lệnh cuối"),
-            "url": st.column_config.LinkColumn("Xem kèo", display_text="Mở Polymarket"),
-        },
-    )
-
-# --- MỤC 5: CÁC VỊ THẾ BỊ LOẠI KHÁC & REDEEMABLE ---
-with st.expander(f"⚪ Xem {len(rej_df)} vị thế bị loại do vốn nhỏ hoặc sai dải giá"):
-    disp_rej = rej_df[["reason", "title", "outcome", "avg_price", "entry_cost_usdc", "raw_user_bet", "last_buy_ago"]].copy()
-    disp_rej["avg_price"] = disp_rej["avg_price"] * 100.0
-    st.dataframe(
-        disp_rej,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "reason": st.column_config.TextColumn("Lý do loại", width="medium"),
-            "title": st.column_config.TextColumn("Trận đấu", width="large"),
-            "outcome": st.column_config.TextColumn("Cửa"),
-            "avg_price": st.column_config.NumberColumn("Giá ví gốc", format="%.1f¢"),
-            "entry_cost_usdc": st.column_config.NumberColumn("Vốn ví gốc ($)", format="$%,.2f"),
-            "raw_user_bet": st.column_config.NumberColumn("Quy đổi x0.00025", format="$%.2f"),
-            "last_buy_ago": st.column_config.TextColumn("Lệnh cuối"),
-        },
-    )
-
-if redeem_rows:
-    with st.expander(f"💰 Xem {len(redeem_rows)} kèo của ví vừa thắng chờ Redeem — Nhắc bạn bấm Claim"):
-        red_df = pd.DataFrame(redeem_rows)
-        r_pnl = pd.to_numeric(red_df.get("realized_pnl", 0), errors="coerce").fillna(0.0)
-        u_pnl = pd.to_numeric(red_df.get("unrealized_pnl", 0), errors="coerce").fillna(0.0)
-        red_df["total_pnl"] = r_pnl + u_pnl
-        cols_r = [c for c in ["title", "outcome", "avg_price", "total_pnl"] if c in red_df.columns]
-        if cols_r:
-            st.dataframe(red_df[cols_r], use_container_width=True, hide_index=True)
+    st.info("Select cities and filters, then click 'Search Markets' to begin.")
